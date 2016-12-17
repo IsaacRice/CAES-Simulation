@@ -1,0 +1,15 @@
+D:\Dropbox\Class in graduate\指導老師\Paper\逃生路徑\論文\Proposal\Code\New CGA\New CGA\bin\Debug\New CGA.exe.config
+D:\Dropbox\Class in graduate\指導老師\Paper\逃生路徑\論文\Proposal\Code\New CGA\New CGA\obj\Debug\New CGA.csprojResolveAssemblyReference.cache
+D:\Dropbox\Class in graduate\指導老師\Paper\逃生路徑\論文\Proposal\Code\New CGA\New CGA\bin\Debug\New CGA.exe
+D:\Dropbox\Class in graduate\指導老師\Paper\逃生路徑\論文\Proposal\Code\New CGA\New CGA\bin\Debug\New CGA.pdb
+D:\Dropbox\Class in graduate\指導老師\Paper\逃生路徑\論文\Proposal\Code\New CGA\New CGA\obj\Debug\New CGA.exe
+D:\Dropbox\Class in graduate\指導老師\Paper\逃生路徑\論文\Proposal\Code\New CGA\New CGA\obj\Debug\New CGA.pdb
+D:\Dropbox\Class in graduate\指導老師\Paper\逃生路徑\論文\Final\Code\New CGA\New CGA\bin\Debug\New CGA.exe.config
+D:\Dropbox\Class in graduate\指導老師\Paper\逃生路徑\論文\Final\Code\New CGA\New CGA\obj\Debug\New CGA.exe
+D:\Dropbox\Class in graduate\指導老師\Paper\逃生路徑\論文\Final\Code\New CGA\New CGA\obj\Debug\New CGA.pdb
+D:\Dropbox\Class in graduate\指導老師\Paper\逃生路徑\論文\Final\Code\CGA 20151109\New CGA\bin\Debug\New CGA.exe.config
+D:\Dropbox\Class in graduate\指導老師\Paper\逃生路徑\論文\Final\Code\CGA 20151109\New CGA\obj\Debug\New CGA.exe
+D:\Dropbox\Class in graduate\指導老師\Paper\逃生路徑\論文\Final\Code\CGA 20151109\New CGA\obj\Debug\New CGA.pdb
+D:\Dropbox\Class in graduate\指導老師\Paper\逃生路徑\論文\Final\Code\CGA 20151109\New CGA\obj\Debug\New CGA.csprojResolveAssemblyReference.cache
+D:\Dropbox\Class in graduate\指導老師\Paper\逃生路徑\論文\Final\Code\CGA 20151109\New CGA\bin\Debug\New CGA.exe
+D:\Dropbox\Class in graduate\指導老師\Paper\逃生路徑\論文\Final\Code\CGA 20151109\New CGA\bin\Debug\New CGA.pdb

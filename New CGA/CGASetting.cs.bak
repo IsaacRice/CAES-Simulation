@@ -1,0 +1,2054 @@
+﻿using System;
+using System.Collections;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text;
+using System.Drawing;
+using Excel = Microsoft.Office.Interop.Excel;
+
+namespace New_CGA
+{
+    public class CGASetting
+    {
+        public static String[] LetterMeans = { "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q" };
+
+        public struct CompareStruct
+        {
+            public double[] Compare;
+            public double FindMinDL, FindMaxDL;
+            public String[] HeadingDirection;
+            public int MinDangerousLevelX, MinDangerousLevelY;
+            public int[] MinTargetX, MinTargetY;
+        }
+
+        public struct CorridorStruct
+        {
+            public int CorridorPeopleTemp;
+            public Boolean ExistPeople;
+            public Boolean HavedRun;
+            public String PeopleAheadDirectionInCorridor;
+        }
+
+        public struct InitialCalculateStruct
+        {
+            public ArrayList ary;
+            public int TotalNeighbor, X, Y;
+            public double TotalWeight, SumOfSquare, HighestWeight, SelfWeight, MeanWeight, MeanWightwithSelf;
+        }
+
+        public struct NodeInScenario //struct setting
+        {
+            public CorridorStruct[] CorridorStructForMoving;
+
+            //category
+            public Boolean Exit,
+                           Sensor,
+                           Corridor,
+                           Obstacle;
+
+            public String PeopleAheadDirection;
+
+            public int PeopleTemp;
+
+            public double Weight, //Sum of weight
+                          BaseWeight, //Weight of sensor without people
+                          PeopleWeight,  //Weight of people at sensor
+                          BasePercentageDistance, //Base percentage distance for itself
+                          ShortestEuclideanDistanceToExit,
+                          TempWeight, //ShortestEuclideanDistanceToExit
+                          StanderdDivision;
+
+            //STD of its
+
+            public int X, Y, //Coordinates
+                       TargetX, TargetY, //Coordinate of Target Exit
+                       People, //People at Sensor or Corridor
+                       Hop, //Hop from sensor to nearest exit
+                       LastRoundX, LastRoundY, //Last round position
+                       RunTimes; //Running times
+
+            //The direction victims at corridor heading to
+        }
+
+        public static NodeInScenario[,] CalculateNewBaseDL(NodeInScenario[,] node, int[,] DefaultExitSensor)
+        {
+            for (int k = 0; k < node.GetLength(0); k = k + 2)
+            {
+                for (int l = 0; l < node.GetLength(1); l = l + 3)
+                {
+                    if (node[k, l].Exit == false)
+                    {
+                        double[] SortWeight = { -1, -1, -1 };
+
+                        for (int i = 0; i < DefaultExitSensor.GetLength(0); i++)
+                        {
+                            double WidthDifference = 0, HeightDifference = 0;
+                            HeightDifference = Math.Abs((double)k - DefaultExitSensor[i, 1] * 2);
+                            WidthDifference = Math.Abs((double)l - DefaultExitSensor[i, 0] * 3);
+                            SortWeight[i] = HeightDifference + WidthDifference;
+                        }
+
+                        double TempSort;
+
+                        for (int m = 0; m < 2; m++)
+                            for (int n = 0; n < 2 - m; n++)
+                                if (SortWeight[n] != -1 && SortWeight[n + 1] != -1 && SortWeight[n] > SortWeight[n + 1])
+                                {
+                                    TempSort = SortWeight[n];
+                                    SortWeight[n] = SortWeight[n + 1];
+                                    SortWeight[n + 1] = TempSort;
+                                }
+
+                        node[k, l].BaseWeight = 0.6 * SortWeight[0] + 0.3 * SortWeight[1] + 0.1 * SortWeight[2];
+                    }
+                }
+            }
+            for (int i = 0; i < (node.GetLength(0) - 1) / 2 + 1; i++)
+            {
+                for (int j = 0; j < (node.GetLength(1) - 1) / 3 + 1; j++)
+                {
+                    node[i * 2, j * 3].Weight = node[i * 2, j * 3].BaseWeight
+                                                + node[i * 2, j * 3].PeopleWeight;
+                }
+            }
+            return node;
+        }
+        //Calculate base dangerous level
+        public static NodeInScenario[,] CalculateBaseDL(NodeInScenario[,] node, int[,] DefaultExitSensor)
+        {
+            for (int i = 0; i < DefaultExitSensor.GetLength(0); i++)
+            {
+                for (int j = 0; j < DefaultExitSensor[i, 2] + 1; j++)
+                {
+                    for (int k = 0; k < (node.GetLength(0) - 1) / 2 + 1; k++)
+                    {
+                        for (int l = 0; l < (node.GetLength(1) - 1) / 3 + 1; l++)
+                        {
+                            if (node[k * 2, l * 3].Hop == j
+                                && node[k * 2, l * 3].TargetX == DefaultExitSensor[i, 0] * 3
+                                && node[k * 2, l * 3].TargetY == DefaultExitSensor[i, 1] * 2
+                                && node[k * 2, l * 3].Exit != true)
+                            {
+                                double Comparision = -1;
+                                if (l * 3 - node[k * 2, l * 3].TargetX < 0) //往右
+                                {
+                                    node[k * 2, l * 3].BaseWeight = node[k * 2, l * 3 + 3].BaseWeight
+                                           + node[k * 2, l * 3 + 2].BasePercentageDistance * (j + 1)
+                                           + node[k * 2, l * 3 + 1].BasePercentageDistance * (j + 1);
+                                    Comparision = node[k * 2, l * 3].BaseWeight;
+                                }
+                                else if (l * 3 - node[k * 2, l * 3].TargetX > 0)//往左
+                                {
+                                    node[k * 2, l * 3].BaseWeight = node[k * 2, l * 3 - 3].BaseWeight
+                                           + node[k * 2, l * 3 - 2].BasePercentageDistance * (j + 1)
+                                           + node[k * 2, l * 3 - 1].BasePercentageDistance * (j + 1);
+                                    Comparision = node[k * 2, l * 3].BaseWeight;
+                                }
+                                if (k * 2 - node[k * 2, l * 3].TargetY < 0) //往下
+                                    node[k * 2, l * 3].BaseWeight = node[k * 2 + 2, l * 3].BaseWeight
+                                        + node[k * 2 + 1, l * 3].BasePercentageDistance * (j + 1);
+                                else if (k * 2 - node[k * 2, l * 3].TargetY > 0)//往上
+                                    node[k * 2, l * 3].BaseWeight = node[k * 2 - 2, l * 3].BaseWeight
+                                        + node[k * 2 - 1, l * 3].BasePercentageDistance * (j + 1);
+                                if (Comparision != -1 && Comparision < node[k * 2, l * 3].BaseWeight)
+                                    node[k * 2, l * 3].BaseWeight = Comparision;
+                            }
+                        }
+                    }
+                }
+            }
+            for (int i = 0; i < (node.GetLength(0) - 1) / 2 + 1; i++)
+            {
+                for (int j = 0; j < (node.GetLength(1) - 1) / 3 + 1; j++)
+                {
+                    node[i * 2, j * 3].Weight = node[i * 2, j * 3].BaseWeight
+                                                + node[i * 2, j * 3].PeopleWeight;
+                }
+            }
+
+            return node;
+        }
+
+        //Use percentage to make distance and people at same scale
+        public static NodeInScenario[,] CalculatePercentage(NodeInScenario[,] node, int TotalPeople)
+        {
+            int WidthForCalculate = (node.GetLength(1) - 1) / 3,
+                HeightForCalculate = (node.GetLength(0) - 1) / 2,
+                TotalLength = 2 * WidthForCalculate * (HeightForCalculate + 1) + HeightForCalculate * (WidthForCalculate + 1);
+
+            for (int i = 0; i < node.GetLength(0); i++)
+            {
+                for (int j = 0; j < node.GetLength(1); j++)
+                {
+                    if (node[i, j].Sensor == true)
+                        node[i, j].PeopleWeight = (double)node[i, j].People / TotalPeople;
+                    if (node[i, j].Corridor == true)
+                        node[i, j].BasePercentageDistance = (double)1 / TotalLength;
+                }
+            }
+            return node;
+        }
+
+        public static NodeInScenario[,] CGASimulation(NodeInScenario[,] node
+                                                            , int[,] DefaultExitSensor
+                                                            , int CorridorLimit
+                                                            , int TotalPeople
+                                                            , string ThresholdSetting
+                                                            , Excel.Workbook book
+                                                            , Excel.Worksheet sheet
+                                                            , Excel.Range range)
+        {
+            Boolean peoplecheck = true;
+            int RoundCheck = 0, //times check
+                MaxHop = 0; //Maximum hop
+            for (int i = 0; i < DefaultExitSensor.GetLength(0); i++)
+            {
+                if (MaxHop < DefaultExitSensor[i, 2])
+                    MaxHop = DefaultExitSensor[i, 2];
+            }
+
+            //Initial running times to 0
+            for (int i = 0; i < node.GetLength(0); i++)
+            {
+                for (int j = 0; j < node.GetLength(1); j++)
+                {
+                    node[i, j].RunTimes = 0;
+                }
+            }
+
+            //    PrintScenarioWithAllVictims(node);
+
+            while (peoplecheck)
+            {
+                //Using RoundCheck to be a parameter of round number
+                RoundCheck++;
+                /*
+                if (RoundCheck == 1)
+                    if (ThresholdSetting == "SelfMinusSTDwithSelf")
+                        WriteToExcel(RoundCheck, node, book, sheet, range);
+                */
+                //Maximum people at any sensor
+                int MaxPeople = 0;
+
+                //Make people at corridor move to next target node
+                if (RoundCheck > 0)
+                    for (int i = 0; i < node.GetLength(0); i++)
+                    {
+                        for (int j = 0; j < node.GetLength(1); j++)
+                        {
+                            if (node[i, j].Corridor == true)
+                            {
+                                if (node[i, j].CorridorStructForMoving != null)
+                                    for (int k = 0; k < node[i, j].CorridorStructForMoving.Length; k++)
+                                    {
+                                        if (node[i, j].CorridorStructForMoving[k].HavedRun == false)
+                                        {
+                                            int targetX = j, targetY = i;
+
+                                            switch (node[i, j].CorridorStructForMoving[k].PeopleAheadDirectionInCorridor)
+                                            {
+                                                case "left":
+                                                    targetX = j - 1;
+                                                    break;
+
+                                                case "right":
+                                                    targetX = j + 1;
+                                                    break;
+
+                                                case "up":
+                                                    targetY = i - 1;
+                                                    break;
+
+                                                case "down":
+                                                    targetY = i + 1;
+                                                    break;
+                                            }
+
+                                            if (node[i, j].CorridorStructForMoving[k].CorridorPeopleTemp <= CorridorLimit)
+                                            {
+                                                if (node[targetY, targetX].Sensor == true)
+                                                {
+                                                    node[targetY, targetX].PeopleTemp += node[i, j].CorridorStructForMoving[k].CorridorPeopleTemp;
+                                                    node[i, j].CorridorStructForMoving[k].CorridorPeopleTemp = 0;
+
+                                                    if (node[i, j].CorridorStructForMoving.Length > 1)
+                                                    {
+                                                        CorridorStruct[] temp = new CorridorStruct[node[i, j].CorridorStructForMoving.Length - 1];
+                                                        for (int l = 0; l < temp.Length; l++)
+                                                        {
+                                                            if (l < k)
+                                                                temp[l] = node[i, j].CorridorStructForMoving[l];
+                                                            else if (l >= k)
+                                                                temp[l] = node[i, j].CorridorStructForMoving[l + 1];
+                                                        }
+                                                        Array.Resize<CorridorStruct>(ref node[i, j].CorridorStructForMoving, temp.Length);
+                                                        Array.Copy(temp, node[i, j].CorridorStructForMoving, temp.Length);
+                                                    }
+                                                    else
+                                                        node[i, j].CorridorStructForMoving = null;
+                                                }
+
+                                                //Boolean CheckIfRun = false;
+
+                                                if (node[targetY, targetX].Corridor == true)
+                                                {
+                                                    /*
+                                                    for (int l; l < node[targetY, targetX].CorridorStructForMoving.Length; l++)
+                                                        if (node[targetY, targetX].CorridorStructForMoving[l].PeopleAheadDirectionInCorridor
+                                                            == node[i, j].CorridorStructForMoving[k].PeopleAheadDirectionInCorridor)
+                                                        {
+                                                            node[targetY, targetX].CorridorStructForMoving[l].PeopleAheadDirectionInCorridor
+                                                                = node[i, j].CorridorStructForMoving[k].PeopleAheadDirectionInCorridor;
+                                                            node[targetY, targetX].CorridorStructForMoving[l].HavedRun = true;
+                                                            CheckIfRun = true;
+                                                            break;
+                                                        }
+                                                    if (CheckIfRun == false)
+                                                     */
+                                                    /*
+                                                 if (node[targetY, targetX].CorridorStructForMoving != null)
+                                                     for (int l = 0; l < node[targetY, targetX].CorridorStructForMoving.Length; l++)
+                                                         if (node[targetY, targetX].CorridorStructForMoving[l].PeopleAheadDirectionInCorridor
+                                                             == null)
+                                                         {
+                                                             node[targetY, targetX].CorridorStructForMoving[l].PeopleAheadDirectionInCorridor
+                                                                 = node[i, j].CorridorStructForMoving[k].PeopleAheadDirectionInCorridor;
+                                                             node[targetY, targetX].CorridorStructForMoving[l].CorridorPeopleTemp
+                                                                 = node[i, j].CorridorStructForMoving[k].CorridorPeopleTemp;
+                                                             node[targetY, targetX].CorridorStructForMoving[l].HavedRun = true;
+                                                             node[targetY, targetX].CorridorStructForMoving[l].ExistPeople = true;
+                                                             CheckIfRun = true;
+                                                             break;
+                                                         }
+                                                     */
+                                                    //if (CheckIfRun == false)
+                                                    //{
+                                                    CorridorStruct[] temp = new CorridorStruct[1];
+                                                    if (node[targetY, targetX].CorridorStructForMoving != null)
+                                                    {
+                                                        temp = new CorridorStruct[node[targetY, targetX].CorridorStructForMoving.Length];
+                                                        Array.Copy(node[targetY, targetX].CorridorStructForMoving, temp, node[targetY, targetX].CorridorStructForMoving.Length);
+                                                        Array.Resize<CorridorStruct>(ref node[targetY, targetX].CorridorStructForMoving, node[targetY, targetX].CorridorStructForMoving.Length + 1);
+                                                    }
+                                                    else
+                                                        node[targetY, targetX].CorridorStructForMoving = new CorridorStruct[1];
+                                                    if (node[targetY, targetX].CorridorStructForMoving.Length - 1 > 0)
+                                                        Array.Copy(temp, node[targetY, targetX].CorridorStructForMoving, node[targetY, targetX].CorridorStructForMoving.Length - 1);
+                                                    node[targetY, targetX].CorridorStructForMoving[node[targetY, targetX].CorridorStructForMoving.Length - 1].PeopleAheadDirectionInCorridor
+                                                        = node[i, j].CorridorStructForMoving[k].PeopleAheadDirectionInCorridor;
+                                                    node[targetY, targetX].CorridorStructForMoving[node[targetY, targetX].CorridorStructForMoving.Length - 1].CorridorPeopleTemp += node[i, j].CorridorStructForMoving[k].CorridorPeopleTemp;
+                                                    node[targetY, targetX].CorridorStructForMoving[node[targetY, targetX].CorridorStructForMoving.Length - 1].HavedRun = true;
+                                                    node[targetY, targetX].CorridorStructForMoving[node[targetY, targetX].CorridorStructForMoving.Length - 1].ExistPeople = true;
+
+                                                    if (node[i, j].CorridorStructForMoving.Length - 1 > 0)
+                                                    {
+                                                        temp = new CorridorStruct[node[i, j].CorridorStructForMoving.Length - 1];
+                                                        for (int l = 0; l < temp.Length; l++)
+                                                        {
+                                                            if (l < k)
+                                                                temp[l] = node[i, j].CorridorStructForMoving[l];
+                                                            else if (l >= k)
+                                                                temp[l] = node[i, j].CorridorStructForMoving[l + 1];
+                                                        }
+                                                        Array.Resize<CorridorStruct>(ref node[i, j].CorridorStructForMoving, temp.Length);
+                                                        Array.Copy(temp, node[i, j].CorridorStructForMoving, temp.Length);
+                                                    }
+                                                    else
+                                                        node[i, j].CorridorStructForMoving = null;
+                                                    //}
+                                                    /*
+                                                    if (node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].PeopleAheadDirection[1] == node[i, j].PeopleAheadDirection[k])
+                                                    {
+                                                        node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].PeopleAheadDirection[1] = node[i, j].PeopleAheadDirection[k];
+                                                        node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].HavedRun[1] = true;
+                                                    }
+                                                    else if (node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].PeopleAheadDirection[0] == null)
+                                                    {
+                                                        node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].PeopleAheadDirection[0] = node[i, j].PeopleAheadDirection[k];
+                                                        node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].HavedRun[0] = true;
+                                                    }
+                                                    else
+                                                    {
+                                                        node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].PeopleAheadDirection[1] = node[i, j].PeopleAheadDirection[k];
+                                                        node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].HavedRun[1] = true;
+                                                    }
+
+                                                    node[i, j].CorridorStructForMoving[k].ExistPeople = false;
+                                                     */
+                                                }
+                                            }/*
+                                    else if (node[i, j].CorridorStructForMoving[k].CorridorPeopleTemp > CorridorLimit)
+                                    {
+                                        if (node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].Sensor == true)
+                                        {
+                                            node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].PeopleTemp += node[i, j].People;
+                                            node[i, j].People = 0;
+                                        }
+                                        if (node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].Corridor == true)
+                                            if (node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].PeopleAheadDirection[0] == node[i, j].PeopleAheadDirection[k])
+                                            {
+                                                node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].PeopleAheadDirection[0] = node[i, j].PeopleAheadDirection[k];
+                                                node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].HavedRun[0] = true;
+                                            }
+                                            else if (node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].PeopleAheadDirection[1] == node[i, j].PeopleAheadDirection[k])
+                                            {
+                                                node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].PeopleAheadDirection[1] = node[i, j].PeopleAheadDirection[k];
+                                                node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].HavedRun[1] = true;
+                                            }
+                                            else if (node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].PeopleAheadDirection[0] == null)
+                                            {
+                                                node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].PeopleAheadDirection[0] = node[i, j].PeopleAheadDirection[k];
+                                                node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].HavedRun[0] = true;
+                                            }
+                                            else
+                                            {
+                                                node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].PeopleAheadDirection[1] = node[i, j].PeopleAheadDirection[k];
+                                                node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].HavedRun[1] = true;
+                                            }
+                                    }
+                                    if (node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].Exit == true)
+                                        node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].PeopleTemp = 0;
+                                       */
+                                        }
+                                        if (node[i, j].CorridorStructForMoving == null)
+                                            break;
+                                    }
+                            }
+                        }
+                    }
+
+                for (int i = 0; i < node.GetLength(0); i++)
+                {
+                    for (int j = 0; j < node.GetLength(1); j++)
+                    {
+                        if (node[i, j].Corridor == true && node[i, j].CorridorStructForMoving != null)
+                        {
+                            for (int k = 0; k < node[i, j].CorridorStructForMoving.Length; k++)
+                                node[i, j].CorridorStructForMoving[k].HavedRun = false;
+                        }
+                        if (node[i, j].Corridor == true)
+                            node[i, j].People = 0;
+                        /*
+                        if (node[k, l].Sensor == true)
+                            node[k, l].People = node[k, l].CorridorPeopleTemp[0] + node[k, l].CorridorPeopleTemp[1];
+                        node[k, l].HavedRun[0] = false;
+                        node[k, l].HavedRun[1] = false;
+                         */
+                    }
+                }
+                for (int i = 0; i < MaxHop + 1; i++)
+                {
+                    //for (int j = 0; j < DefaultExitSensor.GetLength(0); j++)
+                    //{
+                    //    if (DefaultExitSensor[j, 2] >= i)
+                    for (int k = 0; k < node.GetLength(0); k++)
+                    {
+                        for (int l = 0; l < node.GetLength(1); l++)
+                        {
+                            if (node[k, l].Sensor == true
+                                && node[k, l].Exit == false
+                                && node[k, l].People > 0
+                                && node[k, l].Hop == i)
+                            {
+                                /*                   if (node[k, l].Hop == i
+                                    && node[k, l].TargetX == DefaultExitSensor[j, 0] * 3
+                                    && node[k, l].TargetY == DefaultExitSensor[j, 1] * 2)
+                                {*/
+                                //int MinDangerousLevelX = 0, MinDangerousLevelY = 0;
+                                //double FindMinDL = -1;
+                                /*int[] MinTwoTargetX = { -1, -1, -1, -1 },
+                                    MinTwoTargetY = { -1, -1, -1, -1 };
+                                double[] Compare = { -1, -1, -1, -1 };
+                                String[] HeadingDirection = { "", "", "", "" };*/
+
+                                int MovingPeople = 0;
+                                Boolean RunCheck = false;
+
+                                //Initial threshold pre-processing
+                                InitialCalculateStruct InitialNode = InitialForCalculate(node, l, k);
+
+                                //Initial Threshold
+                                double ThresholdOfWeightWithNeighbor = 0,
+                                    STDwithoutSelf = StandardDeviationParent(InitialNode, node),
+                                    DIwithoutSelf = DispersionIndexParent(InitialNode, node),
+                                    STDwithSelf = StandardDeviationParentwithSelf(InitialNode, node),
+                                    DIwithSelf = DispersionIndexParentwithSelf(InitialNode, node);
+                                if (MeanOfWeight(InitialNode) == 0)
+                                    DIwithoutSelf = 0;
+
+                                if (ThresholdSetting == "SelfMinusSTDwithoutSelf")
+                                    ThresholdOfWeightWithNeighbor = Math.Round(InitialNode.SelfWeight - STDwithoutSelf, 8);
+                                else if (ThresholdSetting == "SelfMinusDIwithoutSelf")
+                                    ThresholdOfWeightWithNeighbor = Math.Round(InitialNode.SelfWeight - DIwithoutSelf, 8);
+                                else if (ThresholdSetting == "HighestMinusSTDandDIwithoutSelf")
+                                    ThresholdOfWeightWithNeighbor = Math.Round(InitialNode.HighestWeight - DIwithoutSelf - STDwithoutSelf, 8);
+                                else if (ThresholdSetting == "SelfMinusSTDwithSelf")
+                                    ThresholdOfWeightWithNeighbor = Math.Round(InitialNode.SelfWeight - STDwithSelf, 8);
+                                else if (ThresholdSetting == "SelfMinusDIwithSelf")
+                                    ThresholdOfWeightWithNeighbor = Math.Round(InitialNode.SelfWeight - DIwithSelf, 8);
+                                else if (ThresholdSetting == "HighestMinusSTDandDIwithSelf")
+                                    ThresholdOfWeightWithNeighbor = Math.Round(InitialNode.HighestWeight - DIwithSelf - STDwithSelf, 8);
+
+                                if (ThresholdOfWeightWithNeighbor < 0)
+                                    ThresholdOfWeightWithNeighbor = 0;
+                                /* //for test
+                                if (RoundCheck == 3)
+                                {
+                                    if ((k == 4 && l == 6) || (k == 2 && l == 3))
+                                    {
+
+                                        for (int q = 0; q < InitialNode.ary.Count; q++)
+                                        {
+                                            double value = double.Parse(InitialNode.ary[q].ToString());
+                                            InitialNode.SumOfSquare += Math.Pow((value - MeanOfWeight(InitialNode)), 2);
+                                            Console.WriteLine("POW2-["+q.ToString()+"]:"+InitialNode.SumOfSquare.ToString());
+                                        }
+
+                                        InitialNode.SumOfSquare = 0;
+                                        for (int p = 0; p < InitialNode.ary.Count; p++)
+                                        {
+                                            double value = double.Parse(InitialNode.ary[p].ToString());
+                                            InitialNode.SumOfSquare += Math.Pow((value - MeanOfWeightwithSelf(InitialNode)), 2);
+                                        }
+                                        Console.WriteLine(k.ToString() + "," + l.ToString());
+                                        Console.WriteLine("Mean:" + MeanOfWeightwithSelf(InitialNode).ToString());
+                                        Console.WriteLine("SumOfSquare:" + InitialNode.SumOfSquare.ToString());
+                                        Console.WriteLine("TotalNeighbor:" + InitialNode.ary.Count.ToString());
+                                        Console.WriteLine("Self:" + InitialNode.SelfWeight.ToString());
+                                        Console.WriteLine("High:" + InitialNode.HighestWeight.ToString());
+                                        Console.WriteLine("DIwithSelf:" + DIwithSelf.ToString());
+                                        Console.WriteLine("STDwithSelf:" + STDwithSelf.ToString());
+                                        Console.WriteLine("DIwithoutSelf:" + DIwithoutSelf.ToString());
+                                        Console.WriteLine("STDwithoutSelf:" + STDwithoutSelf.ToString());
+                                        Console.WriteLine(ThresholdSetting.ToString() + ":" + System.Convert.ToString(ThresholdOfWeightWithNeighbor));
+                                        Console.ReadLine();
+                                    }
+                                }*/
+
+                                //Initial compare struct
+                                CompareStruct CompareWeight = new CompareStruct();
+                                CompareWeight.Compare = new double[4];
+                                CompareWeight.MinTargetX = new int[4];
+                                CompareWeight.MinTargetY = new int[4];
+                                CompareWeight.HeadingDirection = new string[4];
+                                CompareWeight.FindMinDL = -1;
+                                CompareWeight.FindMaxDL = -1;
+                                CompareWeight.MinDangerousLevelX = -1;
+                                CompareWeight.MinDangerousLevelY = -1;
+
+                                for (int m = 0; m < 4; m++)
+                                {
+                                    CompareWeight.Compare[m] = -1;
+                                    CompareWeight.MinTargetX[m] = -1;
+                                    CompareWeight.MinTargetY[m] = -1;
+                                    CompareWeight.HeadingDirection[m] = "";
+                                }
+
+                                //if it's not at top border and not come from the node up node
+                                if (k != 0)// && node[k, l].LastRoundX != l && node[k, l].LastRoundY != k - 2)
+                                    CompareWeight = CompareMethod(CompareWeight, node, l, k, l, k - 2, "up");
+
+                                ////if it's not at down border and not come from the node down node
+                                if (k != node.GetLength(0) - 1)// && node[k, l].LastRoundX != l && node[k, l].LastRoundY != k + 2)
+                                    CompareWeight = CompareMethod(CompareWeight, node, l, k, l, k + 2, "down");
+
+                                //if it's not at left border and not come from the node left node
+                                if (l != 0)// && node[k, l].LastRoundX != l - 3 && node[k, l].LastRoundY != k)
+                                    CompareWeight = CompareMethod(CompareWeight, node, l, k, l - 3, k, "left");
+
+                                //if it's not at right border and not come from the node right node
+                                if (l != node.GetLength(1) - 1)// && node[k, l].LastRoundX != l + 3 && node[k, l].LastRoundY != k)
+                                    CompareWeight = CompareMethod(CompareWeight, node, l, k, l + 3, k, "right");
+
+                                //Sort CompareWeight with dangerlous level ascending
+                                CompareWeight = SortingCompareMethod(CompareWeight, ThresholdOfWeightWithNeighbor, node, l, k);
+
+                                for (int m = 0; m < 4; m++)
+                                    if (CompareWeight.Compare[m] != -1)
+                                    {
+                                        /*
+                                        Console.WriteLine("X:" + k.ToString() + ", Y:" + l.ToString() + " ," + m.ToString() + "," + CompareWeight.Compare[m].ToString());
+                                        Console.ReadLine();
+                                        */
+                                        if (node[k, l].People > CorridorLimit)
+                                        {
+                                            MovingPeople = CorridorLimit;
+                                            node[k, l].People -= MovingPeople;
+                                        }
+                                        else
+                                        {
+                                            MovingPeople = node[k, l].People;
+                                            node[k, l].People -= MovingPeople;
+                                        }
+
+                                        if (node[CompareWeight.MinTargetY[m]
+                                            , CompareWeight.MinTargetX[m]].Exit == false)
+                                            node[CompareWeight.MinTargetY[m]
+                                                , CompareWeight.MinTargetX[m]].TempWeight
+                                                += (double)MovingPeople / TotalPeople;
+
+                                        Boolean CheckRun = false;
+                                        if (node[(CompareWeight.MinTargetY[m] - k) / 2 + k
+                                            , (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving != null)
+                                            for (int n = 0; n < node[(CompareWeight.MinTargetY[m] - k) / 2 + k
+                                                , (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving.Length; n++)
+                                            {
+                                                if (node[(CompareWeight.MinTargetY[m] - k) / 2 + k
+                                                        , (CompareWeight.MinTargetX[m] - l) / 3 + l]
+                                                        .CorridorStructForMoving[n]
+                                                        .PeopleAheadDirectionInCorridor == null)
+                                                {
+                                                    node[(CompareWeight.MinTargetY[m] - k) / 2 + k
+                                                        , (CompareWeight.MinTargetX[m] - l) / 3 + l]
+                                                        .CorridorStructForMoving[n]
+                                                        .PeopleAheadDirectionInCorridor
+                                                        = CompareWeight.HeadingDirection[m];
+                                                    node[(CompareWeight.MinTargetY[m] - k) / 2 + k
+                                                        , (CompareWeight.MinTargetX[m] - l) / 3 + l]
+                                                        .CorridorStructForMoving[n]
+                                                        .CorridorPeopleTemp
+                                                        += MovingPeople;
+                                                    node[(CompareWeight.MinTargetY[m] - k) / 2 + k
+                                                        , (CompareWeight.MinTargetX[m] - l) / 3 + l]
+                                                        .CorridorStructForMoving[n]
+                                                        .HavedRun = true;
+                                                    node[(CompareWeight.MinTargetY[m] - k) / 2 + k
+                                                        , (CompareWeight.MinTargetX[m] - l) / 3 + l]
+                                                        .CorridorStructForMoving[n]
+                                                        .ExistPeople = true;
+                                                    CheckRun = true;
+                                                    break;
+                                                }
+                                            }
+
+                                        if (CheckRun == false)
+                                        {
+                                            CorridorStruct[] temp = new CorridorStruct[1];
+                                            if (node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving != null)
+                                            {
+                                                temp = new CorridorStruct[node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving.Length];
+                                                Array.Copy(node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving, temp, node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving.Length);
+                                                Array.Resize<CorridorStruct>(ref node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving, node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving.Length + 1);
+                                            }
+                                            else
+                                                node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving = new CorridorStruct[1];
+                                            if (node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving.Length - 1 > 0)
+                                                Array.Copy(temp, node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving, node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving.Length - 1);
+                                            node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving[node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving.Length - 1].PeopleAheadDirectionInCorridor
+                                                = CompareWeight.HeadingDirection[m];
+                                            node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving[node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving.Length - 1].HavedRun = true;
+                                            node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving[node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving.Length - 1].ExistPeople = true;
+                                            node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving[node[(CompareWeight.MinTargetY[m] - k) / 2 + k, (CompareWeight.MinTargetX[m] - l) / 3 + l].CorridorStructForMoving.Length - 1].CorridorPeopleTemp += MovingPeople;
+                                        }
+
+                                        /*
+                                        node[CompareWeight.MinTargetY[m]
+                                            , CompareWeight.MinTargetX[m]].LastRoundX = l;
+
+                                        node[CompareWeight.MinTargetY[m]
+                                            , CompareWeight.MinTargetX[m]].LastRoundY = k;
+                                        */
+                                        RunCheck = true;
+                                    }
+
+                                /*if (k == 0 && l == 6)
+                                    Console.WriteLine("{0}, {1}, {2}", Compare[0], CompareWeight.MinDangerousLevelY, CompareWeight.MinDangerousLevelX);
+                                */
+
+                                if (RunCheck == false)
+                                {
+                                    if (node[k, l].People > CorridorLimit)
+                                    {
+                                        MovingPeople = CorridorLimit;
+                                        node[k, l].People -= MovingPeople;
+                                    }
+                                    else
+                                    {
+                                        MovingPeople = node[k, l].People;
+                                        node[k, l].People -= MovingPeople;
+                                    }
+
+                                    if (node[CompareWeight.MinDangerousLevelY, CompareWeight.MinDangerousLevelX].Exit == false)
+                                        node[CompareWeight.MinDangerousLevelY, CompareWeight.MinDangerousLevelX].TempWeight += (double)MovingPeople / TotalPeople;
+                                    //node[(CompareWeight.MinDangerousLevelY - k) / 2 + k, (CompareWeight.MinDangerousLevelX - l) / 3 + l].PeopleTemp += MovingPeople;
+
+                                    string DirectionTemp = "";
+                                    if (CompareWeight.MinDangerousLevelY - k > 0)
+                                        DirectionTemp = "down";
+                                    if (CompareWeight.MinDangerousLevelY - k < 0)
+                                        DirectionTemp = "up";
+                                    if (CompareWeight.MinDangerousLevelX - l > 0)
+                                        DirectionTemp = "right";
+                                    if (CompareWeight.MinDangerousLevelX - l < 0)
+                                        DirectionTemp = "left";
+
+                                    Boolean CheckRun = false;
+                                    if (node[(CompareWeight.MinDangerousLevelY - k) / 2 + k
+                                        , (CompareWeight.MinDangerousLevelX - l) / 3 + l].CorridorStructForMoving != null)
+                                        for (int n = 0; n < node[(CompareWeight.MinDangerousLevelY - k) / 2 + k
+                                            , (CompareWeight.MinDangerousLevelX - l) / 3 + l].CorridorStructForMoving.Length; n++)
+                                        {
+                                            if (node[(CompareWeight.MinDangerousLevelY - k) / 2 + k
+                                                    , (CompareWeight.MinDangerousLevelX - l) / 3 + l]
+                                                    .CorridorStructForMoving[n]
+                                                    .PeopleAheadDirectionInCorridor == null)
+                                            {
+                                                node[(CompareWeight.MinDangerousLevelY - k) / 2 + k
+                                                    , (CompareWeight.MinDangerousLevelX - l) / 3 + l]
+                                                    .CorridorStructForMoving[n]
+                                                    .PeopleAheadDirectionInCorridor
+                                                    = DirectionTemp;
+                                                node[(CompareWeight.MinDangerousLevelY - k) / 2 + k
+                                                    , (CompareWeight.MinDangerousLevelX - l) / 3 + l]
+                                                    .CorridorStructForMoving[n]
+                                                    .CorridorPeopleTemp
+                                                    += MovingPeople;
+                                                node[(CompareWeight.MinDangerousLevelY - k) / 2 + k
+                                                    , (CompareWeight.MinDangerousLevelX - l) / 3 + l]
+                                                    .CorridorStructForMoving[n]
+                                                    .HavedRun = true;
+                                                node[(CompareWeight.MinDangerousLevelY - k) / 2 + k
+                                                    , (CompareWeight.MinDangerousLevelX - l) / 3 + l]
+                                                    .CorridorStructForMoving[n]
+                                                    .ExistPeople = true;
+                                                CheckRun = true;
+                                                break;
+                                            }
+                                        }
+
+                                    if (CheckRun == false)
+                                    {
+                                        CorridorStruct[] temp = new CorridorStruct[1];
+                                        if (node[(CompareWeight.MinDangerousLevelY - k) / 2 + k, (CompareWeight.MinDangerousLevelX - l) / 3 + l].CorridorStructForMoving != null)
+                                        {
+                                            temp = new CorridorStruct[node[(CompareWeight.MinDangerousLevelY - k) / 2 + k, (CompareWeight.MinDangerousLevelX - l) / 3 + l].CorridorStructForMoving.Length];
+                                            Array.Copy(node[(CompareWeight.MinDangerousLevelY - k) / 2 + k, (CompareWeight.MinDangerousLevelX - l) / 3 + l].CorridorStructForMoving, temp, node[(CompareWeight.MinDangerousLevelY - k) / 2 + k, (CompareWeight.MinDangerousLevelX - l) / 3 + l].CorridorStructForMoving.Length);
+                                            Array.Resize<CorridorStruct>(ref node[(CompareWeight.MinDangerousLevelY - k) / 2 + k, (CompareWeight.MinDangerousLevelX - l) / 3 + l].CorridorStructForMoving, node[(CompareWeight.MinDangerousLevelY - k) / 2 + k, (CompareWeight.MinDangerousLevelX - l) / 3 + l].CorridorStructForMoving.Length + 1);
+                                        }
+                                        else
+                                            node[(CompareWeight.MinDangerousLevelY - k) / 2 + k, (CompareWeight.MinDangerousLevelX - l) / 3 + l].CorridorStructForMoving = new CorridorStruct[1];
+                                        if (node[(CompareWeight.MinDangerousLevelY - k) / 2 + k, (CompareWeight.MinDangerousLevelX - l) / 3 + l].CorridorStructForMoving.Length > 1)
+                                            Array.Copy(temp, node[(CompareWeight.MinDangerousLevelY - k) / 2 + k, (CompareWeight.MinDangerousLevelX - l) / 3 + l].CorridorStructForMoving, node[(CompareWeight.MinDangerousLevelY - k) / 2 + k, (CompareWeight.MinDangerousLevelX - l) / 3 + l].CorridorStructForMoving.Length - 1);
+                                        node[(CompareWeight.MinDangerousLevelY - k) / 2 + k
+                                            , (CompareWeight.MinDangerousLevelX - l) / 3 + l]
+                                            .CorridorStructForMoving[node[(CompareWeight.MinDangerousLevelY - k) / 2 + k
+                                            , (CompareWeight.MinDangerousLevelX - l) / 3 + l].CorridorStructForMoving.Length - 1]
+                                            .PeopleAheadDirectionInCorridor
+                                            = DirectionTemp;
+                                        node[(CompareWeight.MinDangerousLevelY - k) / 2 + k
+                                            , (CompareWeight.MinDangerousLevelX - l) / 3 + l]
+                                            .CorridorStructForMoving[node[(CompareWeight.MinDangerousLevelY - k) / 2 + k
+                                            , (CompareWeight.MinDangerousLevelX - l) / 3 + l].CorridorStructForMoving.Length - 1]
+                                            .HavedRun = true;
+                                        node[(CompareWeight.MinDangerousLevelY - k) / 2 + k
+                                            , (CompareWeight.MinDangerousLevelX - l) / 3 + l]
+                                            .CorridorStructForMoving[node[(CompareWeight.MinDangerousLevelY - k) / 2 + k
+                                            , (CompareWeight.MinDangerousLevelX - l) / 3 + l].CorridorStructForMoving.Length - 1]
+                                            .ExistPeople = true;
+                                        node[(CompareWeight.MinDangerousLevelY - k) / 2 + k
+                                            , (CompareWeight.MinDangerousLevelX - l) / 3 + l]
+                                            .CorridorStructForMoving[node[(CompareWeight.MinDangerousLevelY - k) / 2 + k
+                                            , (CompareWeight.MinDangerousLevelX - l) / 3 + l].CorridorStructForMoving.Length - 1]
+                                            .CorridorPeopleTemp += MovingPeople;
+                                    }
+
+                                    /*
+                                    int DirectionArrayNumber = 0;
+                                    if (node[(CompareWeight.MinDangerousLevelY - k) / 2 + k, (CompareWeight.MinDangerousLevelX - l) / 3 + l].PeopleAheadDirection[0] == null)
+                                        DirectionArrayNumber = 0;
+                                    else
+                                        DirectionArrayNumber = 1;
+
+                                    if (CompareWeight.MinDangerousLevelY - k > 0)
+                                        node[(CompareWeight.MinDangerousLevelY - k) / 2 + k, (CompareWeight.MinDangerousLevelX - l) / 3 + l].PeopleAheadDirection[DirectionArrayNumber] = "down";
+                                    if (CompareWeight.MinDangerousLevelY - k < 0)
+                                        node[(CompareWeight.MinDangerousLevelY - k) / 2 + k, (CompareWeight.MinDangerousLevelX - l) / 3 + l].PeopleAheadDirection[DirectionArrayNumber] = "up";
+                                    if (CompareWeight.MinDangerousLevelX - l > 0)
+                                        node[(CompareWeight.MinDangerousLevelY - k) / 2 + k, (CompareWeight.MinDangerousLevelX - l) / 3 + l].PeopleAheadDirection[DirectionArrayNumber] = "right";
+                                    if (CompareWeight.MinDangerousLevelX - l < 0)
+                                        node[(CompareWeight.MinDangerousLevelY - k) / 2 + k, (CompareWeight.MinDangerousLevelX - l) / 3 + l].PeopleAheadDirection[DirectionArrayNumber] = "left";
+
+                                    /*
+                                    node[CompareWeight.MinDangerousLevelY, CompareWeight.MinDangerousLevelX].LastRoundX = l;
+                                    node[CompareWeight.MinDangerousLevelY, CompareWeight.MinDangerousLevelX].LastRoundY = k;
+                                     */
+                                }
+
+                                //}
+                            }
+                        }
+                    }
+
+                    //}
+                }
+
+                //Running times plus 1
+                for (int i = 0; i < node.GetLength(0); i++)
+                {
+                    for (int j = 0; j < node.GetLength(1); j++)
+                    {
+                        if (node[i, j].Sensor == true)
+                        {
+                            node[i, j].People += node[i, j].PeopleTemp;
+                            node[i, j].Weight += node[i, j].TempWeight;
+                            node[i, j].PeopleTemp = 0;
+                            node[i, j].TempWeight = 0;
+                        }
+                        node[i, j].RunTimes += 1;
+                    }
+                }
+
+                //Check if there are still victims
+                for (int i = 0; i < node.GetLength(0); i++)
+                {
+                    for (int j = 0; j < node.GetLength(1); j++)
+                    {
+                        if (node[i, j].Exit == false)
+                            if (node[i, j].Sensor == true)
+                            {
+                                if (node[i, j].People > 0)
+                                    MaxPeople = node[i, j].People;
+                            }
+                            else if (node[i, j].Corridor == true && node[i, j].CorridorStructForMoving != null)
+                            {
+                                for (int k = 0; k < node[i, j].CorridorStructForMoving.Length; k++)
+                                {
+                                    if (node[i, j].CorridorStructForMoving[k].CorridorPeopleTemp > 0)
+                                    {
+                                        MaxPeople = node[i, j].CorridorStructForMoving[k].CorridorPeopleTemp;
+                                        node[i, j].People += node[i, j].CorridorStructForMoving[k].CorridorPeopleTemp;
+                                    }
+                                }
+                            }
+                    }
+                }
+
+                if (MaxPeople == 0)
+                    peoplecheck = false;
+                /*
+                if (ThresholdSetting == "SelfMinusSTDwithSelf")
+                    WriteToExcel(RoundCheck + 1, node, book, sheet, range);
+                */
+                //PrintScenarioWithAllVictims(node);
+
+                //PrintScenarioWithAllDL(node);
+                //Console.ReadLine();
+            }
+
+            //Console.WriteLine("共跑 {0} 回合", node[0, 0].RunTimes);
+            //Console.ReadLine();
+            return node;
+        }
+
+        public static CompareStruct CompareMethod(CompareStruct CompareWeight
+                                                                        , NodeInScenario[,] node
+                                                                        , int OriginX
+                                                                        , int OriginY
+                                                                        , int TestTargetX
+                                                                        , int TestTargetY
+                                                                        , string Direction)
+        {
+            if (CompareWeight.FindMaxDL == -1 || CompareWeight.FindMaxDL < node[TestTargetY, TestTargetX].Weight)
+                CompareWeight.FindMaxDL = node[TestTargetY, TestTargetX].Weight;
+
+            if (CompareWeight.FindMinDL == -1 || CompareWeight.FindMinDL > node[TestTargetY, TestTargetX].Weight)
+            {
+                CompareWeight.FindMinDL = node[TestTargetY, TestTargetX].Weight;
+                CompareWeight.MinDangerousLevelX = TestTargetX;
+                CompareWeight.MinDangerousLevelY = TestTargetY;
+            }
+            if (node[OriginY, OriginX].Weight > node[TestTargetY, TestTargetX].Weight)
+            {
+                for (int m = 0; m < 4; m++)
+                {
+                    if (CompareWeight.Compare[m] == -1)//|| Compare[m] > node[k - 2, l].Weight)
+                    {
+                        CompareWeight.Compare[m] = node[TestTargetY, TestTargetX].Weight;
+                        CompareWeight.MinTargetX[m] = TestTargetX;
+                        CompareWeight.MinTargetY[m] = TestTargetY;
+                        CompareWeight.HeadingDirection[m] = Direction;
+                        break;
+                    }
+                }
+            }
+            return CompareWeight;
+        }
+
+        public static double DispersionIndexParent(InitialCalculateStruct InitialNode
+                                                         , NodeInScenario[,] node)
+        {
+            if (InitialNode.TotalNeighbor > 1)
+            {
+                for (int i = 0; i < InitialNode.ary.Count; i++)
+                {
+                    double value = double.Parse(InitialNode.ary[i].ToString());
+                    InitialNode.SumOfSquare += Math.Pow((value - MeanOfWeight(InitialNode)), 2);
+                }
+                return (InitialNode.SumOfSquare / InitialNode.ary.Count) / MeanOfWeight(InitialNode);
+            }
+            else if (InitialNode.TotalNeighbor == 1)
+                return 0;
+            else
+                return 0;
+        }
+
+
+        public static double DispersionIndexParentwithSelf(InitialCalculateStruct InitialNode
+                                                         , NodeInScenario[,] node)
+        {
+            if (InitialNode.TotalNeighbor >= 1)
+            {
+                for (int i = 0; i < InitialNode.ary.Count; i++)
+                {
+                    double value = double.Parse(InitialNode.ary[i].ToString());
+                    InitialNode.SumOfSquare += Math.Pow((value - MeanOfWeightwithSelf(InitialNode)), 2);
+                }
+                InitialNode.SumOfSquare += Math.Pow((InitialNode.SelfWeight - MeanOfWeightwithSelf(InitialNode)), 2);
+                return (InitialNode.SumOfSquare / (InitialNode.ary.Count + 1)) / MeanOfWeightwithSelf(InitialNode);
+            }
+            else
+                return 0;
+        }
+
+        //Distribute people to scenario
+        public static NodeInScenario[,] DistributeVictims(NodeInScenario[,] node, int TotalPeople)
+        {
+            //Take random to decide number to distribute
+            Random rand = new Random(Guid.NewGuid().GetHashCode());
+            int RandVictims = 0,
+                EachTime = ((node.GetLength(0) - 1) / 2 + 1) * ((node.GetLength(1) - 1) / 3 + 1),
+                Limit = TotalPeople / EachTime;
+            if ((TotalPeople / EachTime) < 2)
+                Limit = 2;
+            while (TotalPeople > 0)
+            {
+                for (int i = 0; i < (node.GetLength(0) - 1) / 2 + 1; i++)
+                {
+                    if (TotalPeople == 0)
+                        break;
+                    for (int j = 0; j < (node.GetLength(1) - 1) / 3 + 1; j++)
+                    {
+                        if (TotalPeople == 0)
+                            break;
+
+                        if (node[i * 2, j * 3].Exit == false)
+                        {
+                            RandVictims = rand.Next(0, Limit);
+                            if (RandVictims <= TotalPeople)
+                            {
+                                node[i * 2, j * 3].People += RandVictims;
+                                TotalPeople -= RandVictims;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return node;
+        }
+
+        //Record max hop for each exit
+        public static int[,] FindMaxHopForExits(NodeInScenario[,] node, int[,] DefaultExitSensor)
+        {
+            for (int i = 0; i < DefaultExitSensor.GetLength(0); i++)
+            {
+                for (int j = 0; j < (node.GetLength(0) - 1) / 2 + 1; j++)
+                {
+                    for (int k = 0; k < (node.GetLength(1) - 1) / 3 + 1; k++)
+                    {
+                        if (node[j * 2, k * 3].Sensor == true)
+                        {
+                            if (node[j * 2, k * 3].TargetX == DefaultExitSensor[i, 0] * 3
+                                && node[j * 2, k * 3].TargetY == DefaultExitSensor[i, 1] * 2)
+                            {
+                                if (node[j * 2, k * 3].Hop > DefaultExitSensor[i, 2])
+                                    DefaultExitSensor[i, 2] = node[j * 2, k * 3].Hop;
+                            }
+                        }
+                    }
+                }
+            }
+            return DefaultExitSensor;
+        }
+
+        public static InitialCalculateStruct InitialForCalculate(NodeInScenario[,] node
+                                                                         , int TestX
+                                                                         , int TestY)
+        {
+            InitialCalculateStruct InitialNode = new InitialCalculateStruct();
+            InitialNode.ary = new ArrayList();
+            InitialNode.TotalWeight = 0;
+            InitialNode.TotalNeighbor = 0;
+            InitialNode.SumOfSquare = 0;
+            InitialNode.SelfWeight = node[TestY, TestX].Weight;
+            InitialNode.HighestWeight = -1;
+            InitialNode.MeanWeight = -1;
+            InitialNode.MeanWightwithSelf = -1;
+            InitialNode.X = TestX;
+            InitialNode.Y = TestY;
+
+            //if it's not at top border
+            if (TestY != 0)
+            {
+                InitialNode.TotalWeight += node[TestY - 2, TestX].Weight;
+                InitialNode.TotalNeighbor += 1;
+                InitialNode.ary.Add(node[TestY - 2, TestX].Weight);
+                if (InitialNode.HighestWeight == -1 || InitialNode.HighestWeight < node[TestY - 2, TestX].Weight)
+                    InitialNode.HighestWeight = node[TestY - 2, TestX].Weight;
+            }
+
+            ////if it's not at down border
+            if (TestY != node.GetLength(0) - 1)
+            {
+                InitialNode.TotalWeight += node[TestY + 2, TestX].Weight;
+                InitialNode.TotalNeighbor += 1;
+                InitialNode.ary.Add(node[TestY + 2, TestX].Weight);
+                if (InitialNode.HighestWeight == -1 || InitialNode.HighestWeight < node[TestY + 2, TestX].Weight)
+                    InitialNode.HighestWeight = node[TestY + 2, TestX].Weight;
+            }
+
+            //if it's not at left border
+            if (TestX != 0)
+            {
+                InitialNode.TotalWeight += node[TestY, TestX - 3].Weight;
+                InitialNode.TotalNeighbor += 1;
+                InitialNode.ary.Add(node[TestY, TestX - 3].Weight);
+                if (InitialNode.HighestWeight == -1 || InitialNode.HighestWeight < node[TestY, TestX - 3].Weight)
+                    InitialNode.HighestWeight = node[TestY, TestX - 3].Weight;
+            }
+
+            //if it's not at right border
+            if (TestX != node.GetLength(1) - 1)
+            {
+                InitialNode.TotalWeight += node[TestY, TestX + 3].Weight;
+                InitialNode.TotalNeighbor += 1;
+                InitialNode.ary.Add(node[TestY, TestX + 3].Weight);
+                if (InitialNode.HighestWeight == -1 || InitialNode.HighestWeight < node[TestY, TestX + 3].Weight)
+                    InitialNode.HighestWeight = node[TestY, TestX + 3].Weight;
+            }
+
+            if (InitialNode.TotalNeighbor != 0)
+            {
+                InitialNode.MeanWeight = InitialNode.TotalWeight / InitialNode.TotalNeighbor;
+                InitialNode.MeanWightwithSelf = (InitialNode.TotalWeight + InitialNode.SelfWeight) / (InitialNode.TotalNeighbor + 1);
+            }
+
+            if (InitialNode.HighestWeight == -1)
+                InitialNode.HighestWeight = InitialNode.SelfWeight;
+
+            if (InitialNode.MeanWeight == -1)
+                InitialNode.MeanWeight = InitialNode.SelfWeight;
+
+            if (InitialNode.MeanWightwithSelf == -1)
+                InitialNode.MeanWightwithSelf = InitialNode.SelfWeight;
+
+            return InitialNode;
+        }
+
+        public static double MeanOfWeight(InitialCalculateStruct InitialNode)
+        {
+            return Math.Round(InitialNode.TotalWeight / InitialNode.ary.Count, 15);
+        }
+
+        public static double MeanOfWeightwithSelf(InitialCalculateStruct InitialNode)
+        {
+            return Math.Round((InitialNode.TotalWeight + InitialNode.SelfWeight) / (InitialNode.ary.Count + 1), 15);
+        }
+
+        public static String NumberToText(int number)
+        {
+            int ColumnBase = 26,
+                DigitMax = 7;
+            String Digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+            if (number <= 0)
+                throw new IndexOutOfRangeException("index must be a positive number");
+
+            if (number <= ColumnBase)
+                return Digits[number - 1].ToString();
+
+            var sb = new StringBuilder().Append(' ', DigitMax);
+            var current = number;
+            var offset = DigitMax;
+            while (current > 0)
+            {
+                sb[--offset] = Digits[--current % ColumnBase];
+                current /= ColumnBase;
+            }
+
+            return sb.ToString(offset, DigitMax - offset);
+        }
+
+        //VoronoiDiagram to find nearest exit 切割並記錄target exit and hop
+        public static NodeInScenario[,] PartitioningExit(NodeInScenario[,] node, int[,] ExitSetting)
+        {
+            for (int i = 0; i < node.GetLength(0); i++)
+            {
+                for (int j = 0; j < node.GetLength(1); j++)
+                {
+                    for (int k = 0; k < ExitSetting.GetLength(0); k++)
+                    {
+                        if (node[i, j].Sensor == true && node[i, j].Exit == false)
+                        {
+                            double doubleXNow = j,
+                                   doubleYNow = i,
+                                   doubleXTarget = ExitSetting[k, 0] * 3,
+                                   doubleYTarget = ExitSetting[k, 1] * 2,
+                                   DistanceNow = Math.Sqrt(Math.Pow(doubleXTarget - doubleXNow, 2)
+                                                           + Math.Pow(doubleYTarget - doubleYNow, 2));
+                            if (node[i, j].ShortestEuclideanDistanceToExit.Equals(-1))
+                            {
+                                node[i, j].ShortestEuclideanDistanceToExit = DistanceNow;
+                                node[i, j].TargetX = ExitSetting[k, 0] * 3;
+                                node[i, j].TargetY = ExitSetting[k, 1] * 2;
+                                node[i, j].Hop = Math.Abs(j - ExitSetting[k, 0] * 3) / 3
+                                                + Math.Abs(i - ExitSetting[k, 1] * 2) / 2 - 1;
+                                if (j - ExitSetting[k, 0] * 3 < 0) //往右
+                                {
+                                    node[i, j + 1].Hop = node[i, j].Hop;
+                                    node[i, j + 2].Hop = node[i, j].Hop;
+                                    node[i, j].PeopleAheadDirection = "right";
+                                }
+                                else if (j - ExitSetting[k, 0] * 3 > 0) //往左
+                                {
+                                    node[i, j - 1].Hop = node[i, j].Hop;
+                                    node[i, j - 2].Hop = node[i, j].Hop;
+                                    node[i, j].PeopleAheadDirection = "left";
+                                }
+
+                                if (i - ExitSetting[k, 1] * 2 < 0) //往下
+                                {
+                                    node[i + 1, j].Hop = node[i, j].Hop;
+                                    node[i, j].PeopleAheadDirection = "down";
+                                }
+                                else if (i - ExitSetting[k, 1] * 2 > 0)//往上
+                                {
+                                    node[i - 1, j].Hop = node[i, j].Hop;
+                                    node[i, j].PeopleAheadDirection = "up";
+                                }
+                            }
+                            else if (node[i, j].ShortestEuclideanDistanceToExit > DistanceNow)
+                            {
+                                node[i, j].ShortestEuclideanDistanceToExit = DistanceNow;
+                                node[i, j].TargetX = ExitSetting[k, 0] * 3;
+                                node[i, j].TargetY = ExitSetting[k, 1] * 2;
+                                node[i, j].Hop = Math.Abs(j - node[i, j].TargetX) / 3
+                                                + Math.Abs(i - node[i, j].TargetY) / 2 - 1;
+                                if (j - ExitSetting[k, 0] * 3 < 0) //往右
+                                {
+                                    node[i, j + 1].Hop = node[i, j].Hop;
+                                    node[i, j + 2].Hop = node[i, j].Hop;
+                                    node[i, j].PeopleAheadDirection = "right";
+                                }
+                                else if (j - ExitSetting[k, 0] * 3 > 0) //往左
+                                {
+                                    node[i, j - 1].Hop = node[i, j].Hop;
+                                    node[i, j - 2].Hop = node[i, j].Hop;
+                                    node[i, j].PeopleAheadDirection = "left";
+                                }
+
+                                if (i - ExitSetting[k, 1] * 2 < 0) //往下
+                                {
+                                    node[i + 1, j].Hop = node[i, j].Hop;
+                                    node[i, j].PeopleAheadDirection = "down";
+                                }
+                                else if (i - ExitSetting[k, 1] * 2 > 0)//往上
+                                {
+                                    node[i - 1, j].Hop = node[i, j].Hop;
+                                    node[i, j].PeopleAheadDirection = "up";
+                                }
+
+                                //Console.WriteLine("\nNearest Hop is {0} ", node[i, j].Hop.ToString());
+                                //Console.ReadLine();
+                            }
+                        }
+                    }
+                }
+            }
+            return node;
+        }
+
+        //Print the scenario
+        public static void PrintScenario(NodeInScenario[,] node)
+        {
+            for (int i = 0; i < node.GetLength(0); i++)
+            {
+                for (int j = 0; j < node.GetLength(1); j++)
+                {
+                    if (node[i, j].Exit == true)
+                        Console.Write("Ｅ");
+                    else if (node[i, j].Sensor == true)
+                        Console.Write("※");
+                    else if (node[i, j].Corridor == true)
+                        Console.Write("。");
+                    else
+                        Console.Write("口");
+                }
+                Console.WriteLine();
+            }
+            Console.WriteLine("\n以上為地圖");
+            Console.ReadLine();
+        }
+
+        //Print the scenario with people
+        public static void PrintScenarioWithAllDL(NodeInScenario[,] node)
+        {
+            for (int i = 0; i < node.GetLength(0); i++)
+            {
+                for (int j = 0; j < node.GetLength(1); j++)
+                {
+                    if (node[i, j].Exit == true)
+                        Console.Write("Ｅ");
+                    else if (node[i, j].Sensor == true)
+                    {
+                        if (node[i, j].People < 10)
+                            Console.Write(" {0}", node[i, j].Weight.ToString());
+                        else
+                            Console.Write("{0}", node[i, j].Weight.ToString());
+                    }
+                    else if (node[i, j].Corridor == true)
+                    {
+                        if (node[i, j].People < 10)
+                            Console.Write(" {0}", node[i, j].Weight.ToString());
+                        else
+                            Console.Write("{0}", node[i, j].Weight.ToString());
+                    }
+                    else
+                        Console.Write("口");
+                }
+                Console.WriteLine();
+            }
+            Console.WriteLine("\n以上為地圖+人數");
+
+            //Console.ReadLine();
+        }
+
+        //Print the scenario with people
+        public static void PrintScenarioWithAllVictims(NodeInScenario[,] node)
+        {
+            for (int i = 0; i < node.GetLength(0); i++)
+            {
+                for (int j = 0; j < node.GetLength(1); j++)
+                {
+                    if (node[i, j].Exit == true)
+                        Console.Write("Ｅ");
+                    else if (node[i, j].Sensor == true)
+                    {
+                        if (node[i, j].People < 10)
+                            Console.Write(" {0}", node[i, j].People.ToString());
+                        else
+                            Console.Write("{0}", node[i, j].People.ToString());
+                    }
+                    else if (node[i, j].Corridor == true)
+                    {
+                        if (node[i, j].People < 10)
+                            Console.Write(" {0}", node[i, j].People.ToString());
+                        else
+                            Console.Write("{0}", node[i, j].People.ToString());
+                    }
+                    else
+                        Console.Write("口");
+                }
+                Console.WriteLine();
+            }
+            Console.WriteLine("\n以上為地圖+人數");
+
+            //Console.ReadLine();
+        }
+
+        //Print the scenario with people
+        public static void PrintScenarioWithVictims(NodeInScenario[,] node)
+        {
+            for (int i = 0; i < node.GetLength(0); i++)
+            {
+                for (int j = 0; j < node.GetLength(1); j++)
+                {
+                    if (node[i, j].Exit == true)
+                        Console.Write("Ｅ");
+                    else if (node[i, j].Sensor == true)
+                    {
+                        if (node[i, j].People < 10)
+                            Console.Write(" {0}", node[i, j].People.ToString());
+                        else
+                            Console.Write("{0}", node[i, j].People.ToString());
+                    }
+                    else if (node[i, j].Corridor == true)
+                        Console.Write("。");
+                    else
+                        Console.Write("口");
+                }
+                Console.WriteLine();
+            }
+            Console.WriteLine("\n以上為地圖+人數");
+            Console.ReadLine();
+        }
+
+        //初始人數
+        public static void setPeople(NodeInScenario[,] n, double totalPeople)
+        {
+            Random rand = new Random(Guid.NewGuid().GetHashCode());
+
+            while (totalPeople > 0)
+            {
+                int randI = rand.Next(0, n.GetLength(0));
+                int randJ = rand.Next(0, n.GetLength(1));
+
+                if (n[randI, randJ].Exit == false)
+                {
+                    n[randI, randJ].People++;
+                    totalPeople--;
+                }
+            }
+        }
+
+        //Initialize the scenario and set all node categories
+        public static NodeInScenario[,] SetSensor(NodeInScenario[,] node, int[,] ExitSetting, int DistancePerCorridor)
+        {
+            for (int i = 0; i < node.GetLength(0); i++)
+            {
+                for (int j = 0; j < node.GetLength(1); j++)
+                {
+                    node[i, j].Exit = false;
+                    node[i, j].Sensor = false;
+                    node[i, j].Corridor = false;
+                    node[i, j].Obstacle = false;
+                    node[i, j].PeopleTemp = 0;
+                    node[i, j].PeopleAheadDirection = null;
+                    node[i, j].CorridorStructForMoving = null;
+                    if ((i % 2 == 0) && (j % 3 == 0))
+                    {
+                        node[i, j].Sensor = true;
+                        node[i, j].ShortestEuclideanDistanceToExit = -1;
+                    }
+                    else if ((i % 2 == 0) || (j % 3 == 0))
+                    {
+                        node[i, j].Corridor = true;
+                    }
+                    else
+                        node[i, j].Obstacle = true;
+                }
+            }
+            for (int i = 0; i < ExitSetting.GetLength(0); i++)
+            {
+                node[ExitSetting[i, 1] * 2, ExitSetting[i, 0] * 3].Exit = true;
+                node[ExitSetting[i, 1] * 2, ExitSetting[i, 0] * 3].Weight = 0;
+                node[ExitSetting[i, 1] * 2, ExitSetting[i, 0] * 3].BaseWeight = 0;
+                node[ExitSetting[i, 1] * 2, ExitSetting[i, 0] * 3].PeopleWeight = 0;
+            }
+            return node;
+        }
+
+        public static CompareStruct SortingCompareMethod(CompareStruct CompareWeight
+                                                                       , double Threshold
+                                                                       , NodeInScenario[,] node
+                                                                       , int OriginX
+                                                                       , int OriginY)
+        {
+            double TempCompare;
+            int TempMinTwoTargetX, TempMinTwoTargetY;
+            String TempHeadingDirection;
+
+            //bubble sorting CompareWeight Struct
+            for (int m = 0; m < 3; m++)
+                for (int n = 0; n < 3 - m; n++)
+                    if (CompareWeight.Compare[n] != -1 && CompareWeight.Compare[n + 1] != -1 && CompareWeight.Compare[n] > CompareWeight.Compare[n + 1])
+                    {
+                        TempCompare = CompareWeight.Compare[n];
+                        CompareWeight.Compare[n] = CompareWeight.Compare[n + 1];
+                        CompareWeight.Compare[n + 1] = TempCompare;
+                        TempMinTwoTargetX = CompareWeight.MinTargetX[n];
+                        CompareWeight.MinTargetX[n] = CompareWeight.MinTargetX[n + 1];
+                        CompareWeight.MinTargetX[n + 1] = TempMinTwoTargetX;
+                        TempMinTwoTargetY = CompareWeight.MinTargetY[n];
+                        CompareWeight.MinTargetY[n] = CompareWeight.MinTargetY[n + 1];
+                        CompareWeight.MinTargetY[n + 1] = TempMinTwoTargetY;
+                        TempHeadingDirection = CompareWeight.HeadingDirection[n];
+                        CompareWeight.HeadingDirection[n] = CompareWeight.HeadingDirection[n + 1];
+                        CompareWeight.HeadingDirection[n + 1] = TempHeadingDirection;
+                    }
+
+            for (int m = 0; m < 4; m++)
+                if (CompareWeight.Compare[m] > Threshold)
+                {
+                    CompareWeight.Compare[m] = -1;
+                    CompareWeight.MinTargetX[m] = -1;
+                    CompareWeight.MinTargetY[m] = -1;
+                    CompareWeight.HeadingDirection[m] = "";
+                }
+
+            return CompareWeight;
+        }
+
+        public static double StandardDeviationParent(InitialCalculateStruct InitialNode
+                                                   , NodeInScenario[,] node)
+        {
+            if (InitialNode.TotalNeighbor > 1)
+            {
+                for (int i = 0; i < InitialNode.ary.Count; i++)
+                {
+                    double value = double.Parse(InitialNode.ary[i].ToString());
+                    InitialNode.SumOfSquare += Math.Pow((value - MeanOfWeight(InitialNode)), 2);
+                }
+                return Math.Round(Math.Sqrt(InitialNode.SumOfSquare / InitialNode.ary.Count), 15);
+            }
+            else if (InitialNode.TotalNeighbor == 1)
+                return 0;
+            else
+                return 0;
+        }
+
+        public static double StandardDeviationParentwithSelf(InitialCalculateStruct InitialNode
+                                                   , NodeInScenario[,] node)
+        {
+            if (InitialNode.TotalNeighbor >= 1)
+            {
+                for (int i = 0; i < InitialNode.ary.Count; i++)
+                {
+                    double value = double.Parse(InitialNode.ary[i].ToString());
+                    InitialNode.SumOfSquare += Math.Pow((value - MeanOfWeightwithSelf(InitialNode)), 2);
+                }
+                InitialNode.SumOfSquare += Math.Pow((InitialNode.SelfWeight - MeanOfWeightwithSelf(InitialNode)), 2);
+                return Math.Sqrt(InitialNode.SumOfSquare / (InitialNode.ary.Count + 1));
+            }
+            else
+                return 0;
+        }
+
+        public static int TextToNumber(string text)
+        {
+            return text
+                .Select(c => c - 'A' + 1)
+                .Aggregate((sum, next) => sum * 26 + next);
+        }
+
+        //寫入至csv
+        public static void WriteResultToCSV(int ScenarioHeight
+                                            , int ScenarioWidth
+                                            , int TotalPeople
+                                            , int RunningTimes
+                                            , int CorridorLimit
+                                            , int[] CGAWithHighestMinusDIandSTD
+                                            , int[] CGAWithSelfMinusSTD
+                                            , int[] CGAWithSelfMinusDI
+                                            , int[] CGAWithHighestMinusDIandSTDwithSelf
+                                            , int[] CGAWithSelfMinusSTDwithSelf
+                                            , int[] CGAWithSelfMinusDIwithSelf
+                                            , int[] ShortestPath)
+        {
+            String CSVFileName = "TestTemp/" + TotalPeople.ToString() + " People in Map with " + ScenarioWidth.ToString() + "×" + ScenarioHeight.ToString() + " sensors and " + CorridorLimit.ToString() + " Corridor Limit run " + RunningTimes.ToString() + " times.csv";
+
+            FileStream fs = new FileStream(CSVFileName, FileMode.Create, FileAccess.Write);
+            StreamWriter sw = new StreamWriter(fs, System.Text.Encoding.Default);
+            sw.WriteLine("總回數,總人數,走廊限制");
+            sw.WriteLine("{0},{1},{2}\n\n", RunningTimes, TotalPeople, CorridorLimit);
+
+            sw.WriteLine("回數,HighestMinusDIandSTDwithoutSelf逃生回合數,SelfMinusSTDwithoutSelf逃生回合數,SelfMinusDIwithoutSelf逃生回合數,HighestMinusDIandSTDwithSelf逃生回合數,SelfMinusSTDwithSelf逃生回合數,SelfMinusDIwithSelf逃生回合數,SP逃生回合數");
+            for (int i = 0; i < RunningTimes; i++)
+            {
+                sw.WriteLine("{0},{1},{2},{3},{4},{5},{6},{7}", i + 1, CGAWithHighestMinusDIandSTD[i], CGAWithSelfMinusSTD[i], CGAWithSelfMinusDI[i], CGAWithHighestMinusDIandSTDwithSelf[i], CGAWithSelfMinusSTDwithSelf[i], CGAWithSelfMinusDIwithSelf[i], ShortestPath[i]);
+            }
+
+            sw.Flush();
+            sw.Close();
+            fs.Close();
+        }
+
+        public static void WriteScenarioToCSV(NodeInScenario[,] node)
+        {
+            FileStream fs = new FileStream("Test Scenario.csv", FileMode.Create, FileAccess.Write);
+            StreamWriter sw = new StreamWriter(fs, System.Text.Encoding.Default);
+
+            sw.WriteLine("People");
+            for (int i = 0; i < node.GetLength(0); i++)
+            {
+                for (int j = 0; j < node.GetLength(1); j++)
+                {
+                    if (j != 0)
+                        sw.Write(",");
+                    if (node[i, j].Exit == true)
+                        sw.Write("Exit");
+                    else if (node[i, j].Corridor == true)
+                        sw.Write("1");
+                    else if (node[i, j].Sensor == true)
+                        sw.Write(node[i, j].People);
+                    else if (node[i, j].Obstacle == true)
+                        sw.Write("Obstacle");
+                }
+                sw.WriteLine();
+            }
+
+            sw.WriteLine();
+            sw.WriteLine();
+
+            sw.WriteLine("People Weight");
+            for (int i = 0; i < node.GetLength(0); i++)
+            {
+                for (int j = 0; j < node.GetLength(1); j++)
+                {
+                    if (j != 0)
+                        sw.Write(",");
+                    if (node[i, j].Exit == true)
+                        sw.Write("Exit");
+                    else if (node[i, j].Corridor == true)
+                        sw.Write("1");
+                    else if (node[i, j].Sensor == true)
+                        sw.Write(node[i, j].PeopleWeight);
+                    else if (node[i, j].Obstacle == true)
+                        sw.Write("Obstacle");
+                }
+                sw.WriteLine();
+            }
+
+            sw.WriteLine();
+            sw.WriteLine();
+
+            sw.WriteLine("Corridor Weight");
+            for (int i = 0; i < node.GetLength(0); i++)
+            {
+                for (int j = 0; j < node.GetLength(1); j++)
+                {
+                    if (j != 0)
+                        sw.Write(",");
+                    if (node[i, j].Exit == true)
+                        sw.Write("Exit");
+                    else if (node[i, j].Corridor == true)
+                        sw.Write(node[i, j].BasePercentageDistance * (node[i, j].Hop + 1));
+                    else if (node[i, j].Sensor == true)
+                        sw.Write(node[i, j].BaseWeight);
+                    else if (node[i, j].Obstacle == true)
+                        sw.Write("Obstacle");
+                }
+                sw.WriteLine();
+            }
+
+            sw.WriteLine();
+            sw.WriteLine();
+
+            sw.WriteLine("Initial Final Weight");
+            for (int i = 0; i < node.GetLength(0); i++)
+            {
+                for (int j = 0; j < node.GetLength(1); j++)
+                {
+                    if (j != 0)
+                        sw.Write(",");
+                    if (node[i, j].Exit == true)
+                        sw.Write("Exit");
+                    else if (node[i, j].Corridor == true)
+                        sw.Write(node[i, j].BasePercentageDistance * (node[i, j].Hop + 1));
+                    else if (node[i, j].Sensor == true)
+                        sw.Write(node[i, j].Weight);
+                    else if (node[i, j].Obstacle == true)
+                        sw.Write("Obstacle");
+                }
+                sw.WriteLine();
+            }
+
+            sw.WriteLine();
+            sw.WriteLine();
+
+            sw.Flush();
+            sw.Close();
+            fs.Close();
+            Console.WriteLine("\n已將地圖人數，初始DL存檔至Test Scenario.csv");
+            Console.ReadLine();
+        }
+
+        public static void WriteToExcel(int RoundCheck, NodeInScenario[,] node, Excel.Workbook book, Excel.Worksheet sheet, Excel.Range range)
+        {
+            Object[] TestArgs = new Object[1];
+            String NewPosition = "";
+
+            TestArgs[0] = "第" + RoundCheck.ToString() + "回合";
+            NewPosition = "A" + ((RoundCheck - 1) * 2 * (node.GetLength(0) + 1) + 1).ToString();
+            range = sheet.get_Range(NewPosition);
+            range.GetType().InvokeMember("Value", BindingFlags.SetProperty, null, range, TestArgs);
+
+            NewPosition = "A" + (((RoundCheck - 1) * 2 * (node.GetLength(0) + 1)) + node.GetLength(0) + 2).ToString();
+            range = sheet.get_Range(NewPosition);
+            range.GetType().InvokeMember("Value", BindingFlags.SetProperty, null, range, TestArgs);
+
+            for (int i = 1; i < node.GetLength(0) + 1; i++)
+            {
+                for (int j = 0; j < node.GetLength(1); j++)
+                {
+                    NewPosition = NumberToText(j + 1) + ((RoundCheck - 1) * (node.GetLength(0) + 1) * 2 + i + 1).ToString();
+                    range = sheet.get_Range(NewPosition);
+                    if (node[i - 1, j].Exit == true)
+                    {
+                        //TestArgs[0] = node[i - 1, j].TargetY;
+                        TestArgs[0] = "Exit";
+                        range.Interior.Color = System.Drawing.ColorTranslator.ToOle(System.Drawing.Color.LightGreen);
+                    }
+                    else if (node[i - 1, j].Obstacle == true)
+                    {
+                        TestArgs[0] = "Obstacle";
+                        range.Font.Color = System.Drawing.ColorTranslator.ToOle(System.Drawing.Color.White);
+                        range.Interior.Color = System.Drawing.ColorTranslator.ToOle(System.Drawing.Color.Black);
+                    }
+                    else
+                    {
+                        TestArgs[0] = node[i - 1, j].People;
+                        range.Interior.Color = System.Drawing.ColorTranslator.ToOle(System.Drawing.Color.LightYellow);
+                    }
+                    range.GetType().InvokeMember("Value", BindingFlags.SetProperty, null, range, TestArgs);
+
+                    NewPosition = NumberToText(j + 1) + ((RoundCheck - 1) * (node.GetLength(0) + 1) * 2 + node.GetLength(0) + 1 + i + 1).ToString();
+                    range = sheet.get_Range(NewPosition);
+                    if (node[i - 1, j].Exit == true)
+                    {
+                        TestArgs[0] = node[i - 1, j].Weight;
+                        range.Interior.Color = System.Drawing.ColorTranslator.ToOle(System.Drawing.Color.LightGreen);
+                    }
+                    //TestArgs[0] = "Exit";
+                    else if (node[i - 1, j].Obstacle == true)
+                    {
+                        TestArgs[0] = "Obstacle";
+                        range.Font.Color = System.Drawing.ColorTranslator.ToOle(System.Drawing.Color.White);
+                        range.Interior.Color = System.Drawing.ColorTranslator.ToOle(System.Drawing.Color.Black);
+                    }
+                    else
+                    {
+                        TestArgs[0] = node[i - 1, j].Weight;
+                        range.Interior.Color = System.Drawing.ColorTranslator.ToOle(System.Drawing.Color.LightYellow);
+                    }
+
+                    range.GetType().InvokeMember("Value", BindingFlags.SetProperty, null, range, TestArgs);
+                }
+            }
+        }
+
+        /*
+        //找最近出口 & 設定距離
+        public static void findMinExit(NodeInScenario[,] n, int ni, int nj)
+        {
+            double minDis = double.MaxValue;
+
+            for (int i = 0; i < n.GetLength(0); i++)
+            {
+                for (int j = 0; j < n.GetLength(1); j++)
+                {
+                    if (n[i, j].Exit == true)
+                    {
+                        double dis = Math.Abs(ni - i) + (Math.Abs(nj - j) * 2);
+
+                        if (dis < minDis)
+                        {
+                            minDis = dis;
+                            n[ni, nj].X = Math.Abs(nj - j) * 2;
+                            n[ni, nj].Y = Math.Abs(ni - i);
+
+                            //n[ni, nj].Distance = dis;
+                        }
+                    }
+                }
+            }
+        }
+
+        //找最近的點加權重
+        public static int findNode2AddBW(NodeInScenario[,] n, int ni, int nj, double totalDis)
+        {
+            double minW = int.MaxValue;
+            int minI = 0, minJ = 0;
+
+            //上
+            if (ni - 1 >= 0 && n[ni - 1, nj].BaseWeight < minW)
+            {
+                minW = n[ni - 1, nj].BaseWeight;
+                minI = ni - 1;
+                minJ = nj;
+            }
+
+            //下
+            if (ni + 1 < n.GetLength(0) && n[ni + 1, nj].BaseWeight < minW)
+            {
+                minW = n[ni + 1, nj].BaseWeight;
+                minI = ni + 1;
+                minJ = nj;
+            }
+
+            //左
+            if (nj - 1 >= 0 && n[ni, nj - 1].BaseWeight < minW)
+            {
+                minW = n[ni, nj - 1].BaseWeight;
+                minI = ni;
+                minJ = nj - 1;
+            }
+
+            //右
+            if (nj + 1 < n.GetLength(1) && n[ni, nj + 1].BaseWeight < minW)
+            {
+                minW = n[ni, nj + 1].BaseWeight;
+                minI = ni;
+                minJ = nj + 1;
+            }
+
+            double newW = minW + ((Math.Abs(ni - minI) + Math.Abs(nj - minJ) * 2) / totalDis) * (n[minI, minJ].Hop + 1);
+
+            if (newW == n[ni, nj].BaseWeight)
+                return 0;
+            else
+            {
+                n[ni, nj].BaseWeight = newW;
+                n[ni, nj].Hop = n[minI, minJ].Hop + 1;
+                return 1;
+            }
+        }
+
+        //找出路
+        public static void findWayOut(NodeInScenario[,] n, int ni, int nj, int pathLimit)
+        {
+            int[] limitCounter = new int[4];
+
+            while (true)
+            {
+                Boolean endWhile = true;
+                double minW = n[ni, nj].Weight;
+                int minI = 0, minJ = 0, minWay = -1;
+
+                //上
+                if (ni - 1 >= 0 && n[ni - 1, nj].Weight < minW && limitCounter[0] < pathLimit)
+                {
+                    minW = n[ni - 1, nj].Weight;
+                    minI = ni - 1;
+                    minJ = nj;
+                    minWay = 0;
+                }
+
+                //下
+                if (ni + 1 < n.GetLength(0) && n[ni + 1, nj].Weight < minW && limitCounter[1] < pathLimit)
+                {
+                    minW = n[ni + 1, nj].Weight;
+                    minI = ni + 1;
+                    minJ = nj;
+                    minWay = 1;
+                }
+
+                //左
+                if (nj - 1 >= 0 && n[ni, nj - 1].Weight < minW && limitCounter[2] < pathLimit)
+                {
+                    minW = n[ni, nj - 1].Weight;
+                    minI = ni;
+                    minJ = nj - 1;
+                    minWay = 2;
+                }
+
+                //右
+                if (nj + 1 < n.GetLength(1) && n[ni, nj + 1].Weight < minW && limitCounter[3] < pathLimit)
+                {
+                    minW = n[ni, nj + 1].Weight;
+                    minI = ni;
+                    minJ = nj + 1;
+                    minWay = 3;
+                }
+
+                //////////////////////////////////
+                if (minW < n[ni, nj].Weight)
+                {
+                    n[ni, nj].People--;
+                    endWhile = false;
+                    limitCounter[minWay]++;
+                    /*
+                    if (minWay <= 1)
+                        n[minI, minJ].tempPeople1++;
+                    else if (minWay >= 2)
+                        n[minI, minJ].tempPeople2++;
+
+                    mathSingleNodeTW(n, minI, minJ);
+                    mathSingleNodeTW(n, ni, nj);
+
+                    if (n[minJ, minJ].exit == true)
+                        n[minI, minJ].totalW = 0;*/
+        /*
+}
+
+//離開迴圈
+if (endWhile == true || n[ni, nj].People == 0)
+break;
+}
+}
+//初始基本權重
+public static NodeInScenario[,] InitialBaseWeight(NodeInScenario[,] node)
+{
+//距離加總
+double totalDis = 0;
+for (int i = 0; i < node.GetLength(0); i++)
+{
+for (int j = 0; j < node.GetLength(1); j++)
+{
+node[i, j].Weight = 0;
+node[i, j].BaseWeight = double.MaxValue;
+node[i, j].People = 0;
+node[i, j].Hop = 0;
+
+//totalDis += n[i, j].distance;
+
+if (node[i, j].Exit == true)
+node[i, j].BaseWeight = 0;
+}
+}
+
+while (true)
+{
+int initialCounter = 0;
+
+for (int i = 0; i < node.GetLength(0); i++)
+{
+for (int j = 0; j < node.GetLength(1); j++)
+{
+if (node[i, j].Exit == true)
+continue;
+else
+initialCounter += findNode2AddBW(node, i, j, totalDis);
+}
+}
+
+if (initialCounter == 0)
+break;
+}
+return node;
+}
+
+*/
+        /*
+        //單點總加權
+        public static void mathSingleNodeTW(NodeInScenario[,] n, int ni, int nj)
+        {
+            //n[ni, nj].Weight = n[ni, nj].BaseWeight + (n[ni, nj].People + n[ni, nj].tempPeople1 + n[ni, nj].tempPeople2) / totalPeople;
+        }
+
+        //總加權
+        public static void mathTotalW(NodeInScenario[,] n, double totalPeo)
+        {
+            for (int i = 0; i < n.GetLength(0); i++)
+            {
+                for (int j = 0; j < n.GetLength(1); j++)
+                {
+                    if (n[i, j].Exit == true)
+                    {
+                        n[i, j].Weight = 0;
+                        continue;
+                    }
+
+                    //else
+                    //  n[i, j].Weight = n[i, j].BaseWeight + (n[i, j].People + n[i, j].tempPeople1 + n[i, j].tempPeople2) / totalPeo;
+                }
+            }
+        }
+        */
+        /*
+        //show 基本權重
+        public static void showBW(NodeInScenario[,] n)
+        {
+            //距離加總
+            double totalDis = 0;
+            for (int i = 0; i < n.GetLength(0); i++)
+            {
+                for (int j = 0; j < n.GetLength(1); j++)
+                {
+                    //totalDis += n[i, j].distance;
+                }
+            }
+
+            Console.WriteLine("\nBasicW:");
+            Console.WriteLine("總距離:{0}", totalDis);
+
+            for (int i = 0; i < n.GetLength(0); i++)
+            {
+                for (int j = 0; j < n.GetLength(1); j++)
+                {
+                    if (n[i, j].Exit == true)
+                        Console.ForegroundColor = ConsoleColor.Green;
+                    else
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+
+                    Console.Write("{0:F2}\t", n[i, j].BaseWeight);
+                }
+                Console.WriteLine();
+            }
+
+            Console.ForegroundColor = ConsoleColor.White;
+        }
+
+        //show 各點距離
+        public static void showDis(NodeInScenario[,] n)
+        {
+            Console.WriteLine("All Node distance:");
+
+            for (int i = 0; i < n.GetLength(0); i++)
+            {
+                for (int j = 0; j < n.GetLength(1); j++)
+                {
+                    if (n[i, j].Exit == true)
+                        Console.ForegroundColor = ConsoleColor.Green;
+                    else
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+
+                    Console.Write("[{0},{1}]\t", n[i, j].X, n[i, j].Y);
+                }
+                Console.WriteLine();
+            }
+
+            Console.ForegroundColor = ConsoleColor.White;
+        }
+
+        //show 各點人數
+        public static void showP(NodeInScenario[,] n)
+        {
+            Console.WriteLine("\n人數:");
+            for (int i = 0; i < n.GetLength(0); i++)
+            {
+                for (int j = 0; j < n.GetLength(1); j++)
+                {
+                    if (n[i, j].Exit == true)
+                        Console.ForegroundColor = ConsoleColor.Green;
+                    else
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+
+                    //Console.Write("{0}\\{1}\\{2}\t", n[i, j].People, n[i, j].tempPeople1, n[i, j].tempPeople2);
+                }
+                Console.WriteLine();
+            }
+
+            Console.ForegroundColor = ConsoleColor.White;
+        }
+
+        //show 總加權
+        public static void showTW(NodeInScenario[,] n)
+        {
+            Console.WriteLine("\n總加權:");
+            for (int i = 0; i < n.GetLength(0); i++)
+            {
+                for (int j = 0; j < n.GetLength(1); j++)
+                {
+                    if (n[i, j].Exit == true)
+                        Console.ForegroundColor = ConsoleColor.Green;
+                    else
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+
+                    Console.Write("{0:F2}\t", n[i, j].Weight);
+                }
+                Console.WriteLine();
+            }
+
+            Console.ForegroundColor = ConsoleColor.White;
+        }
+        */
+        /*
+        //寫入至csv
+        public static void write2CSV(int[] RC, int LC, double PC)
+        {
+            FileStream fs = new FileStream("逃生結果_填入式.csv", FileMode.Create, FileAccess.Write);
+            StreamWriter sw = new StreamWriter(fs, System.Text.Encoding.Default);
+            sw.WriteLine("總回數,總人數");
+            sw.WriteLine("{0},{1}\n\n", LC, PC);
+
+            sw.WriteLine("回數,逃生回合數");
+            for (int i = 0; i < RC.GetLength(0); i++)
+            {
+                sw.WriteLine("{0},{1}", i + 1, RC[i]);
+            }
+
+            sw.Flush();
+            sw.Close();
+            fs.Close();
+        }
+        */
+        /*
+
+        //各點初始整理
+        public static void initialNode(NodeInScenario[,] n)
+        {
+            for (int i = 0; i < n.GetLength(0); i++)
+            {
+                for (int j = 0; j < n.GetLength(1); j++)
+                {
+                    //n[i, j].People += n[i, j].tempPeople1;
+                    //n[i, j].tempPeople1 = n[i, j].tempPeople2;
+                    //n[i, j].tempPeople2 = 0;
+                    //n[i, j].moved = false;
+
+                    if (n[i, j].Exit == true || n[i, j].People == 0)
+                    {
+                        n[i, j].People = 0;
+
+                        //n[i, j].moved = true;
+                    }
+                }
+            }
+        }
+        */
+
+        //逃生啦
+        /*public static int runningMan(NodeInScenario[,] n, double totalPeo, int pathLimit)
+        {
+            int RoundCounter = 0;
+
+            while (true)
+            {
+                RoundCounter++;
+                initialNode(n);
+
+                while (true)
+                {
+                    //從最小權重節點開始找
+                    double minW = double.MaxValue;
+                    int minI = 0, minJ = 0;
+
+                    for (int i = 0; i < n.GetLength(0); i++)
+                    {
+                        for (int j = 0; j < n.GetLength(1); j++)
+                        {/*
+                            if (n[i, j].moved == false && n[i, j].totalW < minW)
+                            {
+                                minW = n[i, j].totalW;
+                                minI = i;
+                                minJ = j;
+                            }
+                        }
+                    }
+                    //////////////////////////////////////////////////////////////////
+
+                    //分配出路
+                    findWayOut(n, minI, minJ, pathLimit);
+
+                    //n[minI, minJ].moved = true;
+                    mathTotalW(n, totalPeo);
+
+                    //判斷離開迴圈
+                    int movedCounter = 0;
+                    for (int i = 0; i < n.GetLength(0); i++)
+                    {
+                        for (int j = 0; j < n.GetLength(1); j++)
+
+                            //if (n[i, j].moved == false)
+                            movedCounter++;
+                    }
+
+                    if (movedCounter == 0)
+                        break;
+                }
+
+                //離開迴圈
+                double peopleCounter = 0;
+
+                for (int i = 0; i < n.GetLength(0); i++)
+                {/*
+                    for (int j = 0; j < n.GetLength(1); j++)
+                        peopleCounter += (n[i, j].people + n[i, j].tempPeople1 + n[i, j].tempPeople2);
+                  */
+        /*
+    }
+
+    //Console.ReadLine();
+    //showTW(n);
+    showP(n);
+
+    if (peopleCounter == 0)
+        break;
+}
+
+return RoundCounter;
+}*/
+    }
+}

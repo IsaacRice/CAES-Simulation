@@ -1,0 +1,760 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using NIS = CAES.ScenarioNode.NodeInScenario; //NIS Represent Node In Scenario
+using WV = CAES.ScenarioNode.EachVictim; //WV Represent EachVictim In Scenario
+using Scenario = CAES.ScenarioNode.Scenario; //Scenario Represent Scenario In Another Class
+using PathRecord = CAES.ScenarioNode.PathRecord;
+using ExitInfo = CAES.ScenarioNode.ExitInfo;
+
+namespace CAES
+{
+    class SettingParameter
+    {
+        public static Scenario SetScenarioType(Scenario Scenario)
+        {
+            for (int i = 0; i < Scenario.Node.GetLength(0); i++)
+            {
+                for (int j = 0; j < Scenario.Node.GetLength(1); j++)
+                {
+                    if (Scenario.ScenarioType == 1)
+                    {
+                        Scenario.Node[i, j].Activited = true;
+                    }
+                    else if (Scenario.ScenarioType == 2)
+                    {
+                        int xSensor = ((Scenario.Node.GetLength(0) - 1) / 3) + 1;
+                        int ySensor = ((Scenario.Node.GetLength(1) - 1) / 2) + 1;
+
+                        int xRange = (xSensor / 3 * 3) - 2;
+                        int yRange = (ySensor / 3 * 2) - 1;
+
+                        if (i >= xRange && i < (Scenario.Node.GetLength(0) - xRange))
+                            Scenario.Node[i, j].Activited = false;
+                        else
+                            Scenario.Node[i, j].Activited = true;
+
+                        if (j > yRange && j < (Scenario.Node.GetLength(1) - yRange) - 1)
+                            Scenario.Node[i, j].Activited = true;
+                    }
+                    else if (Scenario.ScenarioType == 3)
+                    {
+                        int ySensor = ((Scenario.Node.GetLength(1) - 1) / 2) + 1;
+                        int yRange = (ySensor / 3 * 2) - 1;
+
+                        int xSensor = ((Scenario.Node.GetLength(0) - 1) / 3) + 1;
+                        int xRange = ((xSensor / 3 + xSensor % 3) - 1) * 3;
+
+                        if (j >= yRange && j < (Scenario.Node.GetLength(1) - yRange))
+                            Scenario.Node[i, j].Activited = false;
+                        else
+                            Scenario.Node[i, j].Activited = true;
+
+                        if (i >= 0 && i <= xRange)
+                            Scenario.Node[i, j].Activited = true;
+
+                    }
+                }
+            }
+
+            /*
+            for (int i = 0; i < Scenario.Node.GetLength(0); i++)
+            {
+                for (int j = 0; j < Scenario.Node.GetLength(1); j++)
+                {
+                    if (Scenario.Node[i, j].Sensor == true)
+                    {
+                        if ((i != 0) && (Scenario.Node[i - 3, j].Activited == true))
+                        {
+                            Scenario.Node[i, j].LeftSensorX = i - 3;
+                            Scenario.Node[i, j].LeftSensorY = j;
+                        }
+                        if ((i != Scenario.Node.GetLength(0) - 1) && (Scenario.Node[i + 3, j].Activited == true))
+                        {
+                            Scenario.Node[i, j].RightSensorX = i + 3;
+                            Scenario.Node[i, j].RightSensorY = j;
+                        }
+                        if ((j != 0) && (Scenario.Node[i, j - 2].Activited == true))
+                        {
+                            Scenario.Node[i, j].TopSensorX = i;
+                            Scenario.Node[i, j].TopSensorY = j - 2;
+                        }
+                        if ((j != Scenario.Node.GetLength(1) - 1) && (Scenario.Node[i, j + 2].Activited == true))
+                        {
+                            Scenario.Node[i, j].BottemSensorX = i;
+                            Scenario.Node[i, j].BottemSensorY = j + 2;
+                        }
+                    }
+                }
+            }
+            */
+
+            return Scenario;
+        }
+
+        public static Scenario SetBasicParameter(Scenario Scenario
+                                                , int SensorWidth
+                                                , int SensorHeight
+                                                , int CorridorCapacity
+                                                , int VictimsAmount
+                                                , double Alpha
+                                                , double Beta
+                                                , double Gamma
+                                                , int ScenarioType
+                                                , int[,] ExitSetting
+                                                , int[,] FireSetting
+                                                , int FireSpreadTime)
+        {
+            int ScenarioWidth = (SensorWidth - 1) * 3 + 1;
+            int ScenarioHeight = (SensorHeight - 1) * 2 + 1;
+            Scenario.SensorWidth = SensorWidth;
+            Scenario.SensorHeight = SensorHeight;
+            Scenario.ScenarioWidth = ScenarioWidth;
+            Scenario.ScenarioHeight = ScenarioHeight;
+            Scenario.CorridorCapacity = CorridorCapacity;
+            Scenario.Alpha = Alpha;
+            Scenario.Beta = Beta;
+            Scenario.Gamma = Gamma;
+            Scenario.DeathVictimsAmount = 0;
+            Scenario.ScenarioType = ScenarioType;
+            Scenario.AlgorithmType = null;
+            Scenario.LoopRound = new int();
+            Scenario.ExitSensor = new List<ScenarioNode.ExitInfo>();
+
+            for (int i = 0; i < ExitSetting.GetLength(0); i++)
+                Scenario.ExitSensor.Add(
+                    new ScenarioNode.ExitInfo(
+                        ExitSetting[i, 0] * 3,
+                        ExitSetting[i, 1] * 2,
+                        ExitSetting[i, 2],
+                        ExitSetting[i, 3],
+                        ExitSetting[i, 4]));
+            Scenario.FireInfo = new ScenarioNode.FireInfo();
+            Scenario.FireInfo.FireSensor = new List<ScenarioNode.FireSensor>();
+            Scenario.FireInfo.FireSpreadTime = FireSpreadTime;
+            Scenario.FireInfo.StartingFireNumber = FireSetting.GetLength(0);
+
+            for (int i = 0; i < FireSetting.GetLength(0); i++)
+                Scenario.FireInfo.FireSensor.Add(
+                    new ScenarioNode.FireSensor(
+                        FireSetting[i, 0] * 3
+                        , FireSetting[i, 1] * 2
+                        , FireSetting[i, 2]));
+
+            Scenario.Node = new NIS[ScenarioWidth, ScenarioHeight];
+            Scenario.WholeVictims = new WV[VictimsAmount];
+            //Scenario.ExcelProcess.IfRecordXlsx = false;
+
+            Scenario = InitializeScenario(Scenario);
+
+            Scenario = SetScenarioType(Scenario);
+
+            return Scenario;
+        }
+
+        public static Scenario SetBasicParameterRNGFireNExit(Scenario Scenario
+                                                , int SensorWidth
+                                                , int SensorHeight
+                                                , int CorridorCapacity
+                                                , int VictimsAmount
+                                                , double Alpha
+                                                , double Beta
+                                                , double Gamma
+                                                , int ScenarioType
+                                                , int ExitAmount
+                                                , int FireAmount
+                                                , int FireSpreadTime)
+        {
+            int ScenarioWidth = (SensorWidth - 1) * 3 + 1;
+            int ScenarioHeight = (SensorHeight - 1) * 2 + 1;
+            Scenario.SensorWidth = SensorWidth;
+            Scenario.SensorHeight = SensorHeight;
+            Scenario.ScenarioWidth = ScenarioWidth;
+            Scenario.ScenarioHeight = ScenarioHeight;
+            Scenario.CorridorCapacity = CorridorCapacity;
+            Scenario.Alpha = Alpha;
+            Scenario.Beta = Beta;
+            Scenario.Gamma = Gamma;
+            Scenario.DeathVictimsAmount = 0;
+            Scenario.ScenarioType = ScenarioType;
+            Scenario.AlgorithmType = null;
+            Scenario.LoopRound = new int();
+            Scenario.ExitSensor = new List<ScenarioNode.ExitInfo>();
+
+            Scenario.Node = new NIS[ScenarioWidth, ScenarioHeight];
+            Scenario.WholeVictims = new WV[VictimsAmount];
+
+            Scenario = InitializeScenario(Scenario);
+            Scenario = SetScenarioType(Scenario);
+
+            Random rnd = new Random(Guid.NewGuid().GetHashCode());
+
+            for (int i = 0; i < ExitAmount; i++)
+            {
+                bool CheckRepeatNRange = true;
+                int X = rnd.Next() % SensorWidth;
+                int Y = rnd.Next() % SensorHeight;
+                if (Scenario.Node[X * 3, Y * 2].Activited)
+                    if (X == 0 || X == SensorHeight - 1 || Y == 0 || Y == SensorHeight - 1)
+                    {
+                        if (Scenario.ExitSensor.Count() == 0)
+                            CheckRepeatNRange = false;
+
+                        for (int j = 0; j < Scenario.ExitSensor.Count(); j++)
+                            if (Math.Abs(X - (Scenario.ExitSensor[j].X / 3)) + Math.Abs(Y - (Scenario.ExitSensor[j].Y / 2)) >= 3)
+                                CheckRepeatNRange = false;
+                            else
+                            {
+                                CheckRepeatNRange = true;
+                                break;
+                            }
+                    }
+                if (CheckRepeatNRange == false)
+                    Scenario.ExitSensor.Add(new ScenarioNode.ExitInfo(X * 3, Y * 2, -1, 0, 0));
+                else
+                    i--;
+            }
+            Scenario.FireInfo = new ScenarioNode.FireInfo();
+            Scenario.FireInfo.FireSensor = new List<ScenarioNode.FireSensor>();
+            Scenario.FireInfo.WaitingFireSensor = new List<ScenarioNode.FireSensor>();
+            Scenario.FireInfo.FireSpreadTime = FireSpreadTime;
+            Scenario.FireInfo.StartingFireNumber = FireAmount;
+
+            for (int i = 0; i < FireAmount; i++)
+            {
+                bool CheckRepeatNRange = true;
+                bool CheckFireRepeatNRange = true;
+                int X = rnd.Next() % SensorWidth;
+                int Y = rnd.Next() % SensorHeight;
+
+                if (Scenario.Node[X * 3, Y * 2].Activited)
+                    for (int j = 0; j < Scenario.ExitSensor.Count(); j++)
+                        if (Math.Abs(X - (Scenario.ExitSensor[j].X / 3)) + Math.Abs(Y - (Scenario.ExitSensor[j].Y / 2)) >= 2)
+                            CheckRepeatNRange = false;
+                        else
+                        {
+                            CheckRepeatNRange = true;
+                            break;
+                        }
+
+                if (Scenario.Node[X * 3, Y * 2].Activited)
+                    if (!CheckRepeatNRange)
+                    {
+                        if (Scenario.FireInfo.FireSensor.Count() == 0)
+                            CheckFireRepeatNRange = false;
+
+                        for (int k = 0; k < Scenario.FireInfo.FireSensor.Count(); k++)
+                            if (Math.Abs(X - (Scenario.FireInfo.FireSensor[k].X / 3))
+                                + Math.Abs(Y - (Scenario.FireInfo.FireSensor[k].Y / 2)) >= 3)
+                                CheckFireRepeatNRange = false;
+                            else
+                            {
+                                CheckFireRepeatNRange = true;
+                                break;
+                            }
+
+                        if (!CheckFireRepeatNRange)
+                            for (int k = 0; k < Scenario.FireInfo.WaitingFireSensor.Count(); k++)
+                                if (Math.Abs(X - (Scenario.FireInfo.WaitingFireSensor[k].X / 3))
+                                    + Math.Abs(Y - (Scenario.FireInfo.WaitingFireSensor[k].Y / 2)) >= 3)
+                                    CheckFireRepeatNRange = false;
+                                else
+                                {
+                                    CheckFireRepeatNRange = true;
+                                    break;
+                                }
+                    }
+
+                if (CheckFireRepeatNRange == false)
+                    if (i == 0)
+                        Scenario.FireInfo.FireSensor.Add(new ScenarioNode.FireSensor(X * 3, Y * 2, i));
+                    else
+                        Scenario.FireInfo.WaitingFireSensor.Add(new ScenarioNode.FireSensor(X * 3, Y * 2, i * FireSpreadTime));
+                else
+                    i--;
+            }
+
+            //Scenario.ExcelProcess.IfRecordXlsx = false;
+
+            for (int i = 0; i < Scenario.Node.GetLength(0); i++)
+                for (int j = 0; j < Scenario.Node.GetLength(1); j++)
+                    Scenario.ExitSensor.Sort(new PositionSortAC());
+
+            Scenario = FinalizeScenario(Scenario);
+
+
+            return Scenario;
+        }
+
+
+        public class PositionSortAC : IComparer<ExitInfo>
+        {
+            // 遞增排序
+            public int Compare(ExitInfo x, ExitInfo y)
+            {
+                if (x.X == y.X)
+                    return (x.Y.CompareTo(y.Y));
+                else
+                    return (x.X.CompareTo(y.X));
+
+                //return (x.ActualDistance.CompareTo(y.ActualDistance));
+            }
+        }
+
+        public static Scenario SetNewRNGFire(Scenario Scenario
+                                            , int FireAmount)
+        {
+            Scenario.Node[Scenario.FireInfo.WaitingFireSensor[0].X, Scenario.FireInfo.WaitingFireSensor[0].Y].FireSensor = true;
+
+            if (Scenario.AlgorithmType == "CAES")
+            {
+                Scenario.Node[Scenario.FireInfo.WaitingFireSensor[0].X, Scenario.FireInfo.WaitingFireSensor[0].Y].BaseWeight = 0;
+                Scenario.Node[Scenario.FireInfo.WaitingFireSensor[0].X, Scenario.FireInfo.WaitingFireSensor[0].Y].People = 0;
+                Scenario.Node[Scenario.FireInfo.WaitingFireSensor[0].X, Scenario.FireInfo.WaitingFireSensor[0].Y].Weight = 0;
+                for (int k = 0; k < Scenario.ExitSensor.Count(); k++)
+                {
+                    Scenario.Node[Scenario.FireInfo.WaitingFireSensor[0].X, Scenario.FireInfo.WaitingFireSensor[0].Y].DistanceToExits[k].Hop = -1;
+                    Scenario.Node[Scenario.FireInfo.WaitingFireSensor[0].X, Scenario.FireInfo.WaitingFireSensor[0].Y].DistanceToExits[k].AheadDirection = null;
+                    Scenario.Node[Scenario.FireInfo.WaitingFireSensor[0].X, Scenario.FireInfo.WaitingFireSensor[0].Y].DistanceToExits[k].ActualDistance = 0;
+                    Scenario.Node[Scenario.FireInfo.WaitingFireSensor[0].X, Scenario.FireInfo.WaitingFireSensor[0].Y].DistanceToExits[k].EuclideanDistance = 0;
+                }
+            }
+            Scenario.FireInfo.FireSensor.Add(Scenario.FireInfo.WaitingFireSensor[0]);
+
+            Scenario.FireInfo.WaitingFireSensor.RemoveAt(0);
+
+            return Scenario;
+        }
+
+        public static Scenario InitializeScenario(Scenario Scenario)
+        {
+            Scenario.TotalEvacuationRound = 0;
+            Scenario.EvacuationFinished = false;
+            Scenario.BasicLengthPerCorridor = 0;
+            Scenario.BasicWeightPerPerson = 0;
+
+            for (int i = 0; i < Scenario.Node.GetLength(0); i++)
+            {
+                for (int j = 0; j < Scenario.Node.GetLength(1); j++)
+                {
+                    Scenario.Node[i, j] = new NIS();
+                    Scenario.Node[i, j].X = i;
+                    Scenario.Node[i, j].Y = j;
+                    Scenario.Node[i, j].Exit = false;
+                    Scenario.Node[i, j].Sensor = false;
+                    Scenario.Node[i, j].Corridor = false;
+                    Scenario.Node[i, j].Obstacle = false;
+                    Scenario.Node[i, j].BoundarySensor = false;
+                    Scenario.Node[i, j].PeopleTemp = 0;
+                    Scenario.Node[i, j].Hop = -1;
+                    Scenario.Node[i, j].PeopleAheadDirection = null;
+                    Scenario.Node[i, j].CrowdRatio = new double();
+                    Scenario.Node[i, j].FEII = 0;
+                    //Scenario.Node[i, j].CorridorStructForMoving = null;
+                    Scenario.Node[i, j].VictimsAtSensor = new List<ScenarioNode.EachVictim>();
+
+                    if (i > 2)
+                    {
+
+                        Scenario.Node[i, j].LeftSensorX = i - 3;
+                        Scenario.Node[i, j].LeftSensorY = j;
+                    }
+                    else
+                    {
+                        Scenario.Node[i, j].LeftSensorX = -1;
+                        Scenario.Node[i, j].LeftSensorY = -1;
+                    }
+                    if (i < Scenario.Node.GetLength(0) - 3)
+                    {
+                        Scenario.Node[i, j].RightSensorX = i + 3;
+                        Scenario.Node[i, j].RightSensorY = j;
+                    }
+                    else
+                    {
+                        Scenario.Node[i, j].RightSensorX = -1;
+                        Scenario.Node[i, j].RightSensorY = -1;
+                    }
+                    if (j > 1)
+                    {
+                        Scenario.Node[i, j].TopSensorX = i;
+                        Scenario.Node[i, j].TopSensorY = j - 2;
+                    }
+                    else
+                    {
+                        Scenario.Node[i, j].TopSensorX = -1;
+                        Scenario.Node[i, j].TopSensorY = -1;
+                    }
+                    if (j < Scenario.Node.GetLength(1) - 2)
+                    {
+                        Scenario.Node[i, j].BottemSensorX = i;
+                        Scenario.Node[i, j].BottemSensorY = j + 2;
+                    }
+                    else
+                    {
+                        Scenario.Node[i, j].BottemSensorX = -1;
+                        Scenario.Node[i, j].BottemSensorY = -1;
+                    }
+
+                    //Check the node type(Sensor, Corridor, Obstacle)
+                    if ((i % 3 == 0) && (j % 2 == 0))
+                    {
+                        Scenario.Node[i, j].Sensor = true;
+                        Scenario.Node[i, j].ShortestEuclideanDistanceToExit = -1;
+                    }
+                    else if ((i % 3 == 0) || (j % 2 == 0))
+                        Scenario.Node[i, j].Corridor = true;
+                    else
+                        Scenario.Node[i, j].Obstacle = true;
+                }
+            }
+
+            for (int i = 0; i < Scenario.WholeVictims.GetLength(0); i++)
+            {
+                Scenario.WholeVictims[i] = new ScenarioNode.EachVictim();
+                Scenario.WholeVictims[i].SN = i;
+                Scenario.WholeVictims[i].X = 0;
+                Scenario.WholeVictims[i].Y = 0;
+                Scenario.WholeVictims[i].StartX = 0;
+                Scenario.WholeVictims[i].StartY = 0;
+                Scenario.WholeVictims[i].MovingDirection = null;
+                Scenario.WholeVictims[i].LastMovedRound = 0;
+                Scenario.WholeVictims[i].HaveMovedThisRound = false;
+                Scenario.WholeVictims[i].Path = new List<ScenarioNode.PathRecord>();
+                Scenario.WholeVictims[i].RuleFollower = true;
+                Scenario.WholeVictims[i].Live = true;
+                Scenario.WholeVictims[i].TheRoundVictimDead = new int();
+                Scenario.WholeVictims[i].HaveEscaped = false;
+                Scenario.WholeVictims[i].Activated = true;
+            }
+
+            return Scenario;
+        }
+
+
+        public static Scenario FinalizeScenario(Scenario Scenario)
+        {
+
+
+            for (int i = 0; i < Scenario.Node.GetLength(0); i++)
+            {
+                for (int j = 0; j < Scenario.Node.GetLength(1); j++)
+                {
+                    Scenario.Node[i, j].DistanceToExits = new List<ScenarioNode.ExitInfo>();
+                    for (int k = 0; k < Scenario.ExitSensor.Count(); k++)
+                    {
+                        Scenario.Node[i, j].DistanceToExits.Add(
+                            new ScenarioNode.ExitInfo(
+                                Scenario.ExitSensor[k].X
+                                , Scenario.ExitSensor[k].Y
+                                , Scenario.ExitSensor[k].Hop
+                                , Scenario.ExitSensor[k].ActualDistance
+                                , Scenario.ExitSensor[k].EuclideanDistance));
+                    }
+                }
+            }
+
+            Scenario = SetExit(Scenario);
+            Scenario = SetFireSensor(Scenario);
+
+            return Scenario;
+        }
+
+        public static Scenario SetExit(Scenario Scenario)
+        {
+            for (int i = 0; i < Scenario.ExitSensor.Count; i++)
+            {
+                int ExitX = Scenario.ExitSensor[i].X;
+                int ExitY = Scenario.ExitSensor[i].Y;
+                Scenario.Node[ExitX, ExitY].Exit = true;
+                Scenario.Node[ExitX, ExitY].Weight = 0;
+                Scenario.Node[ExitX, ExitY].BaseWeight = 0;
+                Scenario.Node[ExitX, ExitY].PeopleWeight = 0;
+                // If it's swtting itself, then set the hop to 0
+                for (int j = 0; j < Scenario.Node[ExitX, ExitY].DistanceToExits.Count(); j++)
+                {
+                    if (Scenario.Node[ExitX, ExitY].DistanceToExits[j].X == ExitX
+                           && Scenario.Node[ExitX, ExitY].DistanceToExits[j].Y == ExitY)
+                        Scenario.Node[ExitX, ExitY].DistanceToExits[j].Hop = 0;
+                    else
+                        Scenario.Node[ExitX, ExitY].DistanceToExits[j].Hop = -1;
+                }
+            }
+
+            return Scenario;
+        }
+
+
+
+        public static Scenario SetFireSensor(Scenario Scenario)
+        {
+            for (int i = 0; i < Scenario.FireInfo.FireSensor.Count; i++)
+            {
+                int FireSensorX = Scenario.FireInfo.FireSensor[i].X;
+                int FireSensorY = Scenario.FireInfo.FireSensor[i].Y;
+
+                Scenario.Node[FireSensorX, FireSensorY].FireSensor = true;
+            }
+
+            return Scenario;
+        }
+
+        public static Scenario DistributeVictims(Scenario Scenario
+            , int VictimsAmount)
+        {
+            //Take random to decide number to distribute
+            Random rand = new Random(Guid.NewGuid().GetHashCode());
+            int RandVictims = 0,
+                EachTime = ((Scenario.Node.GetLength(0) - 1) / 3 + 1) * ((Scenario.Node.GetLength(1) - 1) / 2 + 1),
+                Limit = VictimsAmount / EachTime,
+                PersonNumber = 0;
+            if ((VictimsAmount / EachTime) < 2)
+                Limit = 2;
+
+            while (VictimsAmount > 0)
+            {
+                for (int i = 0; i < Scenario.Node.GetLength(0); i++)
+                {
+                    if (VictimsAmount == 0)
+                        break;
+                    for (int j = 0; j < Scenario.Node.GetLength(1); j++)
+                    {
+                        if (VictimsAmount == 0)
+                            break;
+                        if (Scenario.Node[i, j].Activited == false)
+                            break;
+                        if (Scenario.Node[i, j].Sensor == true)
+                            if (Scenario.Node[i, j].Exit == false)
+                            {
+                                RandVictims = rand.Next(0, Limit);
+                                if (RandVictims <= VictimsAmount)
+                                {
+                                    Scenario.Node[i, j].People += RandVictims;
+                                    VictimsAmount -= RandVictims;
+
+                                    for (int k = 0; k < RandVictims; k++)
+                                    {
+                                        Scenario.WholeVictims[PersonNumber].StartX = i;
+                                        Scenario.WholeVictims[PersonNumber].StartY = j;
+                                        Scenario.WholeVictims[PersonNumber].X = i;
+                                        Scenario.WholeVictims[PersonNumber].Y = j;
+                                        PersonNumber++;
+                                    }
+
+                                }
+                            }
+                    }
+                }
+            }
+
+            for (int i = 0; i < Scenario.WholeVictims.GetLength(0); i++)
+            {
+                Scenario.WholeVictims[i].Path.Add(
+                    new PathRecord(
+                        Scenario.WholeVictims[i].StartX
+                        , Scenario.WholeVictims[i].StartY
+                        , 0
+                        , false));
+                Scenario.Node[Scenario.WholeVictims[i].StartX, Scenario.WholeVictims[i].StartY].VictimsAtSensor.Add(
+                    new ScenarioNode.EachVictim(
+                        Scenario.WholeVictims[i].SN
+                        , Scenario.WholeVictims[i].X
+                        , Scenario.WholeVictims[i].Y
+                        , Scenario.WholeVictims[i].StartX
+                        , Scenario.WholeVictims[i].StartY
+                        , Scenario.WholeVictims[i].MovingDirection
+                        , Scenario.WholeVictims[i].LastMovedRound
+                        , Scenario.WholeVictims[i].HaveMovedThisRound
+                        , Scenario.WholeVictims[i].Path
+                        , Scenario.WholeVictims[i].RuleFollower
+                        , Scenario.WholeVictims[i].Live
+                        , Scenario.WholeVictims[i].TheRoundVictimDead
+                        , Scenario.WholeVictims[i].HaveEscaped
+                        , Scenario.WholeVictims[i].Activated));
+            }
+
+            return Scenario;
+        }
+
+        public static Scenario CopySenario(Scenario Scenario)
+        {
+            Scenario NewScenario = new Scenario();
+
+            NewScenario.WholeVictims = new ScenarioNode.EachVictim[Scenario.WholeVictims.GetLength(0)];
+
+            for (int i = 0; i < Scenario.WholeVictims.GetLength(0); i++)
+            {
+                NewScenario.WholeVictims[i] = new ScenarioNode.EachVictim();
+                NewScenario.WholeVictims[i].SN = Scenario.WholeVictims[i].SN;
+                NewScenario.WholeVictims[i].X = Scenario.WholeVictims[i].X;
+                NewScenario.WholeVictims[i].Y = Scenario.WholeVictims[i].Y;
+                NewScenario.WholeVictims[i].StartX = Scenario.WholeVictims[i].StartX;
+                NewScenario.WholeVictims[i].StartY = Scenario.WholeVictims[i].StartY;
+                NewScenario.WholeVictims[i].MovingDirection = Scenario.WholeVictims[i].MovingDirection;
+                NewScenario.WholeVictims[i].LastMovedRound = Scenario.WholeVictims[i].LastMovedRound;
+                NewScenario.WholeVictims[i].HaveMovedThisRound = Scenario.WholeVictims[i].HaveMovedThisRound;
+                NewScenario.WholeVictims[i].Path = new List<ScenarioNode.PathRecord>();
+                if (Scenario.WholeVictims[i].Path != null)
+                    for (int j = 0; j < Scenario.WholeVictims[i].Path.Count; j++)
+                    {
+                        NewScenario.WholeVictims[i].Path.Add(
+                            new ScenarioNode.PathRecord(
+                                Scenario.WholeVictims[i].Path[j].X
+                                , Scenario.WholeVictims[i].Path[j].Y
+                                , Scenario.WholeVictims[i].Path[j].Round
+                                , false));
+                    }
+                NewScenario.WholeVictims[i].RuleFollower = Scenario.WholeVictims[i].RuleFollower;
+                NewScenario.WholeVictims[i].Live = Scenario.WholeVictims[i].Live;
+                NewScenario.WholeVictims[i].TheRoundVictimDead = Scenario.WholeVictims[i].TheRoundVictimDead;
+                NewScenario.WholeVictims[i].HaveEscaped = Scenario.WholeVictims[i].HaveEscaped;
+                NewScenario.WholeVictims[i].Activated = Scenario.WholeVictims[i].Activated;
+            }
+
+            NewScenario.Node = new ScenarioNode.NodeInScenario[Scenario.Node.GetLength(0), Scenario.Node.GetLength(1)];
+
+            for (int i = 0; i < Scenario.Node.GetLength(0); i++)
+                for (int j = 0; j < Scenario.Node.GetLength(1); j++)
+                {
+                    NewScenario.Node[i, j] = new ScenarioNode.NodeInScenario();
+                    NewScenario.Node[i, j].VictimsAtSensor = new List<ScenarioNode.EachVictim>();
+                    if (Scenario.Node[i, j].VictimsAtSensor != null)
+                        for (int k = 0; k < Scenario.Node[i, j].VictimsAtSensor.Count; k++)
+                        {
+                            NewScenario.Node[i, j].VictimsAtSensor.Add(
+                                new ScenarioNode.EachVictim(
+                                    Scenario.Node[i, j].VictimsAtSensor[k].SN
+                                    , Scenario.Node[i, j].VictimsAtSensor[k].X
+                                    , Scenario.Node[i, j].VictimsAtSensor[k].Y
+                                    , Scenario.Node[i, j].VictimsAtSensor[k].StartX
+                                    , Scenario.Node[i, j].VictimsAtSensor[k].StartY
+                                    , Scenario.Node[i, j].VictimsAtSensor[k].MovingDirection
+                                    , Scenario.Node[i, j].VictimsAtSensor[k].LastMovedRound
+                                    , Scenario.Node[i, j].VictimsAtSensor[k].HaveMovedThisRound
+                                    , Scenario.Node[i, j].VictimsAtSensor[k].Path
+                                    , Scenario.Node[i, j].VictimsAtSensor[k].RuleFollower
+                                    , Scenario.Node[i, j].VictimsAtSensor[k].Live
+                                    , Scenario.Node[i, j].VictimsAtSensor[k].TheRoundVictimDead
+                                    , Scenario.Node[i, j].VictimsAtSensor[k].HaveEscaped
+                                    , Scenario.Node[i, j].VictimsAtSensor[k].Activated));
+                        }
+                    NewScenario.Node[i, j].DistanceToExits = new List<ScenarioNode.ExitInfo>();
+                    if (Scenario.Node[i, j].DistanceToExits != null)
+                        for (int k = 0; k < Scenario.Node[i, j].DistanceToExits.Count; k++)
+                        {
+                            NewScenario.Node[i, j].DistanceToExits.Add(
+                                new ScenarioNode.ExitInfo(
+                                    Scenario.Node[i, j].DistanceToExits[k].X
+                                    , Scenario.Node[i, j].DistanceToExits[k].Y
+                                    , Scenario.Node[i, j].DistanceToExits[k].Hop
+                                    , Scenario.Node[i, j].DistanceToExits[k].ActualDistance
+                                    , Scenario.Node[i, j].DistanceToExits[k].EuclideanDistance));
+                        }
+                    NewScenario.Node[i, j].Exit = Scenario.Node[i, j].Exit;
+                    NewScenario.Node[i, j].Sensor = Scenario.Node[i, j].Sensor;
+                    NewScenario.Node[i, j].Corridor = Scenario.Node[i, j].Corridor;
+                    NewScenario.Node[i, j].Obstacle = Scenario.Node[i, j].Obstacle;
+                    NewScenario.Node[i, j].Activited = Scenario.Node[i, j].Activited;
+                    NewScenario.Node[i, j].FireSensor = Scenario.Node[i, j].FireSensor;
+                    NewScenario.Node[i, j].BoundarySensor = Scenario.Node[i, j].BoundarySensor;
+
+
+                    NewScenario.Node[i, j].HaveRunThisRound = Scenario.Node[i, j].HaveRunThisRound;
+                    NewScenario.Node[i, j].PeopleAheadDirection = Scenario.Node[i, j].PeopleAheadDirection;
+                    NewScenario.Node[i, j].Weight = Scenario.Node[i, j].Weight;
+                    NewScenario.Node[i, j].BaseWeight = Scenario.Node[i, j].BaseWeight;
+                    NewScenario.Node[i, j].PeopleWeight = Scenario.Node[i, j].PeopleWeight;
+                    NewScenario.Node[i, j].BasePercentageDistance = Scenario.Node[i, j].BasePercentageDistance;
+                    NewScenario.Node[i, j].ShortestEuclideanDistanceToExit = Scenario.Node[i, j].ShortestEuclideanDistanceToExit;
+                    NewScenario.Node[i, j].TempWeight = Scenario.Node[i, j].TempWeight;
+                    NewScenario.Node[i, j].ThresholdValue = Scenario.Node[i, j].ThresholdValue;
+                    NewScenario.Node[i, j].CrowdRatio = Scenario.Node[i, j].CrowdRatio;
+                    NewScenario.Node[i, j].FEII = Scenario.Node[i, j].FEII;
+                    NewScenario.Node[i, j].X = Scenario.Node[i, j].X;
+                    NewScenario.Node[i, j].Y = Scenario.Node[i, j].Y;
+                    NewScenario.Node[i, j].TargetX = Scenario.Node[i, j].TargetX;
+                    NewScenario.Node[i, j].TargetY = Scenario.Node[i, j].TargetY;
+                    NewScenario.Node[i, j].People = Scenario.Node[i, j].People;
+                    NewScenario.Node[i, j].Hop = Scenario.Node[i, j].Hop;
+                    NewScenario.Node[i, j].LeftSensorX = Scenario.Node[i, j].LeftSensorX;
+                    NewScenario.Node[i, j].LeftSensorY = Scenario.Node[i, j].LeftSensorY;
+                    NewScenario.Node[i, j].RightSensorX = Scenario.Node[i, j].RightSensorX;
+                    NewScenario.Node[i, j].RightSensorY = Scenario.Node[i, j].RightSensorY;
+                    NewScenario.Node[i, j].TopSensorX = Scenario.Node[i, j].TopSensorX;
+                    NewScenario.Node[i, j].TopSensorY = Scenario.Node[i, j].TopSensorY;
+                    NewScenario.Node[i, j].BottemSensorX = Scenario.Node[i, j].BottemSensorX;
+                    NewScenario.Node[i, j].BottemSensorY = Scenario.Node[i, j].BottemSensorY;
+                }
+
+            NewScenario.AlgorithmType = Scenario.AlgorithmType;
+            NewScenario.ThresholdType = Scenario.ThresholdType;
+            NewScenario.DLCalculation = Scenario.DLCalculation;
+            NewScenario.SensorHeight = Scenario.SensorHeight;
+            NewScenario.SensorWidth = Scenario.SensorWidth;
+            NewScenario.ScenarioHeight = Scenario.ScenarioHeight;
+            NewScenario.ScenarioWidth = Scenario.ScenarioWidth;
+            NewScenario.CorridorCapacity = Scenario.CorridorCapacity;
+            NewScenario.LoopRound = Scenario.LoopRound;
+            NewScenario.ScenarioType = Scenario.ScenarioType;
+
+            NewScenario.Alpha = Scenario.Alpha;
+            NewScenario.Beta = Scenario.Beta;
+            NewScenario.Gamma = Scenario.Gamma;
+
+            NewScenario.ExitSensor = new List<ScenarioNode.ExitInfo>();
+            if (Scenario.ExitSensor != null)
+                for (int j = 0; j < Scenario.ExitSensor.Count; j++)
+                {
+                    NewScenario.ExitSensor.Add(
+                        new ScenarioNode.ExitInfo(
+                            Scenario.ExitSensor[j].X
+                            , Scenario.ExitSensor[j].Y
+                            , Scenario.ExitSensor[j].Hop
+                            , Scenario.ExitSensor[j].ActualDistance
+                            , Scenario.ExitSensor[j].EuclideanDistance));
+                }
+
+            NewScenario.FireInfo = new ScenarioNode.FireInfo();
+            NewScenario.FireInfo.FireSensor = new List<ScenarioNode.FireSensor>();
+
+            if (Scenario.FireInfo.FireSensor != null)
+                for (int j = 0; j < Scenario.FireInfo.FireSensor.Count; j++)
+                {
+                    NewScenario.FireInfo.FireSensor.Add(
+                        new ScenarioNode.FireSensor(
+                            Scenario.FireInfo.FireSensor[j].X
+                            , Scenario.FireInfo.FireSensor[j].Y
+                            , Scenario.FireInfo.FireSensor[j].FireStartRound
+                            ));
+                }
+            NewScenario.FireInfo.WaitingFireSensor = new List<ScenarioNode.FireSensor>();
+            if (Scenario.FireInfo.WaitingFireSensor != null)
+                for (int j = 0; j < Scenario.FireInfo.WaitingFireSensor.Count; j++)
+                {
+                    NewScenario.FireInfo.WaitingFireSensor.Add(
+                        new ScenarioNode.FireSensor(
+                            Scenario.FireInfo.WaitingFireSensor[j].X
+                            , Scenario.FireInfo.WaitingFireSensor[j].Y
+                            , Scenario.FireInfo.WaitingFireSensor[j].FireStartRound
+                            ));
+                }
+
+            NewScenario.FireInfo.FireSpreadTime = Scenario.FireInfo.FireSpreadTime;
+            NewScenario.FireInfo.StartingFireNumber = Scenario.FireInfo.StartingFireNumber;
+
+            NewScenario.TotalEvacuationRound = Scenario.TotalEvacuationRound;
+            NewScenario.EvacuationFinished = Scenario.EvacuationFinished;
+            /*
+            NewScenario.ExcelProcess = new ScenarioNode.ExcelProcess();
+            NewScenario.ExcelProcess.ExcelApp = Scenario.ExcelProcess.ExcelApp;
+            NewScenario.ExcelProcess.Book = Scenario.ExcelProcess.Book;
+            NewScenario.ExcelProcess.Sheet = Scenario.ExcelProcess.Sheet;
+            NewScenario.ExcelProcess.Range = Scenario.ExcelProcess.Range;
+            NewScenario.ExcelProcess.IfRecordXlsx = Scenario.ExcelProcess.IfRecordXlsx;
+            */
+
+            return NewScenario;
+        }
+    }
+}
