@@ -7,4 +7,4 @@ The system is created for the research called "A Dynamic Crowd Guidance Service 
 This paper is an undisclosed master's thesis.
 If you have read this paper and want to test the algorithm, just download this project.
 
-If you have further question, just create an issue to contact with me.
+If you have further questions, just create an issue to contact with me.
